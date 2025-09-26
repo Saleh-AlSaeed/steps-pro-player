@@ -3,6 +3,11 @@ main = "src/index.js"
 compatibility_date = "2025-09-01"
 
 [vars]
-# استخدم http إذا كان الأصل IP بلا TLS (الأسرع والأقل أخطاء).
+# يفضَّل http مع الـ IP لتفادي TLS Handshake (حوّلها https إذا عندك شهادة صالحة)
 ORIGIN_BASE = "http://46.152.17.35"
+
+# مهلة الطلب للمنبع (ms)
 PROXY_TIMEOUT_MS = "15000"
+
+# مدة كاش لشرائح الفيديو (ثواني). 20–30 ثانية مناسبة مع targetduration=8s
+CACHE_SEGMENT_SECONDS = "25"
