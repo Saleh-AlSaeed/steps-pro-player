@@ -1,16 +1,8 @@
 [build]
   publish = "public"
 
-# توجيه كل طلبات HLS عبر Cloudflare Worker
 [[redirects]]
   from = "/hls/*"
   to = "https://fancy-resonance-1b8f.salreggea1.workers.dev/hls/:splat"
   status = 200
   force = true
-
-# SPA fallback (لو احتجته لاحقًا)
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
