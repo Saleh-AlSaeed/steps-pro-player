@@ -1,13 +1,9 @@
 // worker/src/index.js
-// بروكسي HLS مع:
-// - إعادة كتابة روابط m3u8 -> /hls/…
-// - كاش قصير للشرائح (ts/m4s/mp4) عبر Cache API عند الحافة
-// - عدم كاش لقوائم m3u8/مفاتيح التشفير
-// - احترام Range + ترويسات CORS واضحة
+// بروكسي HLS مع CORS شامل، كاش شرائح Edge، إعادة كتابة روابط m3u8
 
 const TAGS = [
-  "EXT-X-KEY", "EXT-X-SESSION-KEY", "EXT-X-MAP",
-  "EXT-X-MEDIA", "EXT-X-I-FRAME-STREAM-INF", "EXT-X-SESSION-DATA",
+  "EXT-X-KEY","EXT-X-SESSION-KEY","EXT-X-MAP",
+  "EXT-X-MEDIA","EXT-X-I-FRAME-STREAM-INF","EXT-X-SESSION-DATA",
 ];
 const TAGS_RE = new RegExp(`^#(?:${TAGS.join("|")}):`, "i");
 
@@ -51,27 +47,42 @@ function rewriteManifest(text, baseAbsUrl){
   }).join("\n");
 }
 
-function basicHeaders(init, pathname, segTTL){
-  const h = new Headers(init?.headers || {});
+// ===== CORS helpers =====
+function corsHeaders(extra = {}){
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Range, Accept, Origin, Referer, User-Agent, Cache-Control",
+    "Access-Control-Expose-Headers": "Accept-Ranges, Content-Range, Content-Length",
+    "Timing-Allow-Origin": "*",
+    ...extra,
+  };
+}
+function withCORS(res, extra = {}){
+  const h = new Headers(res.headers);
+  for (const [k,v] of Object.entries(corsHeaders(extra))) h.set(k, v);
+  return new Response(res.body, { status: res.status, headers: h });
+}
+function preflight(){
+  return new Response(null, { status: 204, headers: corsHeaders() });
+}
+
+function baseHeadersFor(pathname, segTTL){
+  const h = {};
   const ct = mimeFor(pathname);
 
   if (isM3U8(pathname)){
-    h.set("Content-Type", ct);
-    h.set("Cache-Control", "no-store, must-revalidate");
+    h["Content-Type"]  = ct;
+    h["Cache-Control"] = "no-store, must-revalidate";
   } else if (isTS(pathname) || isM4S(pathname) || isMP4(pathname)){
-    if (!h.has("Content-Type")) h.set("Content-Type", ct);
-    const ttl = Number(segTTL || 25);
-    if (!h.has("Cache-Control")) h.set("Cache-Control", `public, max-age=${ttl}, immutable`);
+    h["Content-Type"]  = ct;
+    h["Cache-Control"] = `public, max-age=${Number(segTTL||25)}, immutable`;
   } else if (isKEY(pathname)){
-    h.set("Content-Type", ct);
-    h.set("Cache-Control", "no-store");
+    h["Content-Type"]  = ct;
+    h["Cache-Control"] = "no-store";
   } else {
-    if (!h.has("Content-Type")) h.set("Content-Type", ct);
+    h["Content-Type"]  = ct;
   }
-
-  h.set("Access-Control-Allow-Origin", "*");
-  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length");
-  h.set("Timing-Allow-Origin", "*");
   return h;
 }
 
@@ -110,14 +121,17 @@ export default {
   async fetch(req, env){
     const url = new URL(req.url);
 
+    // CORS preflight
+    if (req.method === "OPTIONS") return preflight();
+
     if (url.pathname === "/health"){
-      return new Response("ok", { status: 200, headers: { "content-type":"text/plain" } });
+      return withCORS(new Response("ok", { status: 200, headers: { "content-type":"text/plain" } }));
     }
     if (req.method !== "GET"){
-      return new Response("Method Not Allowed", { status: 405 });
+      return withCORS(new Response("Method Not Allowed", { status: 405 }));
     }
     if (!url.pathname.startsWith("/hls/")){
-      return new Response("Not Found", { status: 404 });
+      return withCORS(new Response("Not Found", { status: 404 }));
     }
 
     const originBase = new URL(env.ORIGIN_BASE || "http://46.152.17.35");
@@ -126,56 +140,63 @@ export default {
     const wantRange = !!req.headers.get("range");
     const path = url.pathname;
 
-    // كاش الشرائح (بدون Range فقط)
+    // Cache API للشرائح فقط (بدون Range)
     if ((isTS(path) || isM4S(path) || isMP4(path)) && !wantRange){
       const cache = caches.default;
       const cached = await cache.match(req);
       if (cached){
-        const h = basicHeaders({ headers: Object.fromEntries(cached.headers) }, path, segTTL);
-        return new Response(cached.body, { status: cached.status, headers: h });
+        return withCORS(
+          new Response(cached.body, {
+            status: cached.status,
+            headers: new Headers({
+              ...Object.fromEntries(cached.headers),
+              ...baseHeadersFor(path, segTTL),
+            }),
+          })
+        );
       }
     }
 
-    // جلب من المنبع
+    // Upstream
     let res;
     try{
       res = await fetchUpstream(upstream, req, env);
     }catch(e){
-      return new Response("Upstream fetch failed: "+String(e), {
+      return withCORS(new Response("Upstream fetch failed: "+String(e), {
         status: 502,
-        headers: { "content-type":"text/plain", "Access-Control-Allow-Origin":"*" }
-      });
+        headers: { "content-type":"text/plain" }
+      }));
     }
 
     if (res.status >= 400){
-      const h = basicHeaders({ headers: { "content-type":"text/plain" } }, path, segTTL);
-      return new Response(`Upstream error ${res.status}`, { status: res.status, headers: h });
+      return withCORS(new Response(`Upstream error ${res.status}`, {
+        status: res.status,
+        headers: { "content-type":"text/plain", ...baseHeadersFor(path, segTTL) }
+      }));
     }
 
+    // m3u8: rewrite + CORS
     if (isM3U8(path)){
       const raw = await res.text();
       const out = rewriteManifest(raw, res.url);
-      return new Response(out, {
+      return withCORS(new Response(out, {
         status: 200,
-        headers: basicHeaders({ headers: { "content-type":"application/vnd.apple.mpegurl" } }, path, segTTL),
-      });
+        headers: baseHeadersFor(path, segTTL),
+      }));
     }
 
-    const h = basicHeaders({ headers: {} }, path, segTTL);
-    const passthru = ["content-type","accept-ranges","content-range","content-length","etag","last-modified"];
-    for (const k of passthru){
-      const v = res.headers.get(k);
-      if (v) h.set(k, v);
-    }
+    // segments/keys: مرِّر بعض الرؤوس
+    const pass = ["content-type","accept-ranges","content-range","content-length","etag","last-modified"];
+    const h = new Headers(baseHeadersFor(path, segTTL));
+    for (const k of pass){ const v = res.headers.get(k); if (v) h.set(k, v); }
 
-    const final = new Response(res.body, { status: res.status, headers: h });
+    const final = withCORS(new Response(res.body, { status: res.status, headers: h }));
 
-    // خزّن الشرائح الكاملة فقط (200 وبدون Range)
+    // خزّن الشرائح الكاملة فقط
     if ((isTS(path) || isM4S(path) || isMP4(path)) && !wantRange && res.status === 200){
       try{
         const cache = caches.default;
-        const toCache = new Response(await final.clone().arrayBuffer(), { status: final.status, headers: final.headers });
-        await cache.put(req, toCache);
+        await cache.put(req, final.clone());
       }catch{}
     }
 
