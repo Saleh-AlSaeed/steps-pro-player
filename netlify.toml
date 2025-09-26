@@ -1,8 +1,10 @@
 [build]
   publish = "public"
 
+# احتياطي فقط لو أحد طلب /hls/* من نتلايفي؛ نعيد توجيه المتصفح إلى الوركر
 [[redirects]]
   from = "/hls/*"
-  to = "https://fancy-resonance-1b8f.salreggea1.workers.dev/hls/:splat"
-  status = 200
+  to = "https://races-player.it-f2c.workers.dev/hls/:splat"
+  status = 302
   force = true
+  headers = { Cache-Control = "no-store" }
