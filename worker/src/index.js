@@ -1,4 +1,5 @@
 // worker/src/index.js
+// Proxy HLS with manifest rewrite + safe headers
 const TAGS = [
   "EXT-X-KEY","EXT-X-SESSION-KEY","EXT-X-MAP",
   "EXT-X-MEDIA","EXT-X-I-FRAME-STREAM-INF","EXT-X-SESSION-DATA",
@@ -48,36 +49,48 @@ function rewriteManifest(text, baseAbsUrl){
 function basicHeaders(init, pathname){
   const h = new Headers(init.headers || {});
   const ct = mimeFor(pathname);
+
+  // CORS
+  h.set("Access-Control-Allow-Origin", "*");
+  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length");
+
   if (isM3U8(pathname)){
     h.set("Content-Type", ct);
-    h.set("Cache-Control", "no-store, must-revalidate");
+    // لا نخزن القائمة (live)
+    h.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    h.set("Pragma", "no-cache");
   } else if (isTS(pathname) || isM4S(pathname) || isMP4(pathname)){
     if (!h.has("Content-Type")) h.set("Content-Type", ct);
-    if (!h.has("Cache-Control")) h.set("Cache-Control", "public, max-age=15, immutable");
+    // اسمح بتخزين قصير للمقاطع لتخفيف الضغط (CDN only)
+    if (!h.has("Cache-Control")) h.set("Cache-Control", "public, max-age=15, s-maxage=30, immutable");
   } else if (isKEY(pathname)){
     h.set("Content-Type", ct);
     h.set("Cache-Control", "no-store");
+  } else {
+    if (!h.has("Content-Type")) h.set("Content-Type", "application/octet-stream");
+    h.set("Cache-Control", "public, max-age=60");
   }
-  // CORS مريح حتى لو مش مطلوب
-  h.set("Access-Control-Allow-Origin", "*");
-  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length");
   return h;
 }
 
 async function fetchUpstream(req, env){
-  const originBase = new URL(env.ORIGIN_BASE || "http://46.152.17.35"); // HTTP افتراضيًا لتفادي TLS مع IP
+  // مهم: HTTP مع IP لتجنّب TLS/SNI
+  const originBase = new URL(env.ORIGIN_BASE || "http://46.152.17.35");
   const inUrl = new URL(req.url);
-  const upstream = new URL(inUrl.pathname + inUrl.search, originBase);
+  // إزالة بادئة /hls/ عند التجميع
+  const path = inUrl.pathname.replace(/^\/hls/, "");
+  const upstream = new URL(path + inUrl.search, originBase);
 
-  // رؤوس خفيفة: لا Host, لا Referer, لا Origin
+  // رؤوس بسيطة
   const hdrs = new Headers();
   hdrs.set("Accept", "*/*");
   hdrs.set("User-Agent", req.headers.get("user-agent") || "Mozilla/5.0");
+  hdrs.set("Connection", "keep-alive");
   const range = req.headers.get("range");
   if (range) hdrs.set("Range", range);
 
   const controller = new AbortController();
-  const to = Number(env.PROXY_TIMEOUT_MS || 15000);
+  const to = Number(env.PROXY_TIMEOUT_MS || 20000);
   const id = setTimeout(()=>controller.abort("proxy timeout"), to);
 
   let res;
@@ -87,7 +100,8 @@ async function fetchUpstream(req, env){
       headers: hdrs,
       redirect: "follow",
       signal: controller.signal,
-      cf: { cacheEverything: false, cacheTtl: 0 },
+      // لا نستخدم Cache قوي من Cloudflare للمؤشرات، نتركه للمقاطع فقط عبر headers
+      cf: { cacheEverything: false, cacheTtl: 0 }
     });
   } finally { clearTimeout(id); }
 
@@ -97,6 +111,19 @@ async function fetchUpstream(req, env){
 export default {
   async fetch(req, env){
     const url = new URL(req.url);
+
+    // CORS preflight
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS",
+          "Access-Control-Allow-Headers": "Range, User-Agent, Accept",
+          "Access-Control-Max-Age": "86400"
+        }
+      });
+    }
 
     if (url.pathname === "/health"){
       return new Response("ok", { status: 200, headers: { "content-type":"text/plain" } });
@@ -118,8 +145,7 @@ export default {
     const { res, finalUrl } = upstream;
 
     if (res.status >= 400){
-      // مرر 4xx/5xx كما هي (يساعدنا نفهم المصدر)
-      const h = basicHeaders({ headers: { "content-type":"text/plain" } }, url.pathname);
+      const h = basicHeaders({ headers: { "content-type": "text/plain" } }, url.pathname);
       return new Response(`Upstream error ${res.status}`, { status: res.status, headers: h });
     }
 
@@ -133,14 +159,12 @@ export default {
     }
 
     const h = basicHeaders({ headers: {} }, url.pathname);
-    const ct = res.headers.get("content-type");
-    const ar = res.headers.get("accept-ranges");
-    const cr = res.headers.get("content-range");
-    const cl = res.headers.get("content-length");
-    if (ct) h.set("Content-Type", ct);
-    if (ar) h.set("Accept-Ranges", ar);
-    if (cr) h.set("Content-Range", cr);
-    if (cl) h.set("Content-Length", cl);
+    // مرّر بعض الرؤوس المفيدة إن وجدت
+    const passthrough = ["content-type","accept-ranges","content-range","content-length"];
+    for (const k of passthrough){
+      const v = res.headers.get(k);
+      if (v) h.set(k.replace(/\b\w/g, c=>c.toUpperCase()), v);
+    }
 
     return new Response(res.body, { status: res.status, headers: h });
   }
