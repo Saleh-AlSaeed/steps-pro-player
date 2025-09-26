@@ -3,7 +3,6 @@ main = "src/index.js"
 compatibility_date = "2025-09-01"
 
 [vars]
-# مهم: استخدام http مع IP لتجنّب مشاكل TLS/SNI التي تسبب التقطيع
+# استخدم http إذا كان الأصل IP بلا TLS (الأسرع والأقل أخطاء).
 ORIGIN_BASE = "http://46.152.17.35"
-# مهلة معقولة؛ زيادتها قليلاً تساعد الشبكات الأبطأ على تحميل المقاطع بدون timeouts
-PROXY_TIMEOUT_MS = "20000"
+PROXY_TIMEOUT_MS = "15000"
