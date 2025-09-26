@@ -1,5 +1,4 @@
 // worker/src/index.js
-// Proxy HLS with manifest rewrite + safe headers
 const TAGS = [
   "EXT-X-KEY","EXT-X-SESSION-KEY","EXT-X-MAP",
   "EXT-X-MEDIA","EXT-X-I-FRAME-STREAM-INF","EXT-X-SESSION-DATA",
@@ -46,52 +45,48 @@ function rewriteManifest(text, baseAbsUrl){
   }).join("\n");
 }
 
-function basicHeaders(init, pathname){
+function buildHeaders(init, pathname){
   const h = new Headers(init.headers || {});
   const ct = mimeFor(pathname);
 
-  // CORS
-  h.set("Access-Control-Allow-Origin", "*");
-  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length");
-
   if (isM3U8(pathname)){
     h.set("Content-Type", ct);
-    // لا نخزن القائمة (live)
-    h.set("Cache-Control", "no-cache, no-store, must-revalidate");
-    h.set("Pragma", "no-cache");
+    h.set("Cache-Control", "no-store, must-revalidate");
   } else if (isTS(pathname) || isM4S(pathname) || isMP4(pathname)){
     if (!h.has("Content-Type")) h.set("Content-Type", ct);
-    // اسمح بتخزين قصير للمقاطع لتخفيف الضغط (CDN only)
-    if (!h.has("Cache-Control")) h.set("Cache-Control", "public, max-age=15, s-maxage=30, immutable");
+    // TTL صغير للثبات + SWR بسيط
+    if (!h.has("Cache-Control")) h.set("Cache-Control", "public, max-age=6, stale-while-revalidate=20, immutable");
   } else if (isKEY(pathname)){
     h.set("Content-Type", ct);
     h.set("Cache-Control", "no-store");
-  } else {
-    if (!h.has("Content-Type")) h.set("Content-Type", "application/octet-stream");
-    h.set("Cache-Control", "public, max-age=60");
   }
+  // CORS
+  h.set("Access-Control-Allow-Origin", "*");
+  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length");
   return h;
 }
 
 async function fetchUpstream(req, env){
-  // مهم: HTTP مع IP لتجنّب TLS/SNI
   const originBase = new URL(env.ORIGIN_BASE || "http://46.152.17.35");
   const inUrl = new URL(req.url);
-  // إزالة بادئة /hls/ عند التجميع
-  const path = inUrl.pathname.replace(/^\/hls/, "");
-  const upstream = new URL(path + inUrl.search, originBase);
+  const upstream = new URL(inUrl.pathname + inUrl.search, originBase);
 
-  // رؤوس بسيطة
   const hdrs = new Headers();
   hdrs.set("Accept", "*/*");
   hdrs.set("User-Agent", req.headers.get("user-agent") || "Mozilla/5.0");
-  hdrs.set("Connection", "keep-alive");
   const range = req.headers.get("range");
   if (range) hdrs.set("Range", range);
 
   const controller = new AbortController();
-  const to = Number(env.PROXY_TIMEOUT_MS || 20000);
+  const to = Number(env.PROXY_TIMEOUT_MS || 15000);
   const id = setTimeout(()=>controller.abort("proxy timeout"), to);
+
+  // سياسة كاش ديناميكية للـ CF حسب الامتداد
+  const pathname = inUrl.pathname;
+  const isSeg = isTS(pathname) || isM4S(pathname) || isMP4(pathname);
+  const cf = isSeg
+    ? { cacheEverything: true, cacheTtl: 6, cacheTtlByStatus: { "200-299": 6, "404": 0, "500-599": 0 } }
+    : { cacheEverything: false, cacheTtl: 0 };
 
   let res;
   try{
@@ -100,8 +95,7 @@ async function fetchUpstream(req, env){
       headers: hdrs,
       redirect: "follow",
       signal: controller.signal,
-      // لا نستخدم Cache قوي من Cloudflare للمؤشرات، نتركه للمقاطع فقط عبر headers
-      cf: { cacheEverything: false, cacheTtl: 0 }
+      cf
     });
   } finally { clearTimeout(id); }
 
@@ -111,19 +105,6 @@ async function fetchUpstream(req, env){
 export default {
   async fetch(req, env){
     const url = new URL(req.url);
-
-    // CORS preflight
-    if (req.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS",
-          "Access-Control-Allow-Headers": "Range, User-Agent, Accept",
-          "Access-Control-Max-Age": "86400"
-        }
-      });
-    }
 
     if (url.pathname === "/health"){
       return new Response("ok", { status: 200, headers: { "content-type":"text/plain" } });
@@ -145,7 +126,7 @@ export default {
     const { res, finalUrl } = upstream;
 
     if (res.status >= 400){
-      const h = basicHeaders({ headers: { "content-type": "text/plain" } }, url.pathname);
+      const h = buildHeaders({ headers: { "content-type":"text/plain" } }, url.pathname);
       return new Response(`Upstream error ${res.status}`, { status: res.status, headers: h });
     }
 
@@ -154,17 +135,20 @@ export default {
       const out = rewriteManifest(raw, finalUrl);
       return new Response(out, {
         status: 200,
-        headers: basicHeaders({ headers: { "content-type":"application/vnd.apple.mpegurl" } }, url.pathname),
+        headers: buildHeaders({ headers: { "content-type":"application/vnd.apple.mpegurl" } }, url.pathname),
       });
     }
 
-    const h = basicHeaders({ headers: {} }, url.pathname);
-    // مرّر بعض الرؤوس المفيدة إن وجدت
-    const passthrough = ["content-type","accept-ranges","content-range","content-length"];
-    for (const k of passthrough){
-      const v = res.headers.get(k);
-      if (v) h.set(k.replace(/\b\w/g, c=>c.toUpperCase()), v);
-    }
+    // تمرير الشرائح/الفيديو كما هي مع بعض الرؤوس
+    const h = buildHeaders({ headers: {} }, url.pathname);
+    const ct = res.headers.get("content-type");
+    const ar = res.headers.get("accept-ranges");
+    const cr = res.headers.get("content-range");
+    const cl = res.headers.get("content-length");
+    if (ct) h.set("Content-Type", ct);
+    if (ar) h.set("Accept-Ranges", ar);
+    if (cr) h.set("Content-Range", cr);
+    if (cl) h.set("Content-Length", cl);
 
     return new Response(res.body, { status: res.status, headers: h });
   }
