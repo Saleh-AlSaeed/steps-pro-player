@@ -170,7 +170,7 @@
     hls.config.liveMaxLatencyDurationCount = maxLatCnt;
 
     // طول البافر (ثوانٍ): تقريبًا 3 شرائح أو 24s كحد أدنى
-    hls.config.maxBufferLength = Math.max(24, Math.round(TD * 3));      // td=8 => 24
+    hls.config.maxBufferLength = Math.max(40, Math.round(TD * 5));      // td=8 => 24
     hls.config.backBufferLength = Math.max(90, Math.round(TD * 12));    // td=8 => 96
 
     // قفزات التعافي تعتمد على TD (تم استخدامها في الحارس)
@@ -237,7 +237,7 @@
           const details = String(err?.details||"");
           if(/bufferStalledError/i.test(details)){
             stallCnt++;
-            nudgeForward(Math.max(0.3, Math.min(1.2, TD*0.8))); // td=8 => قفزة ~ 6.4s
+            nudgeForward(Math.max(2, Math.min(4, TD*0.5))); // td=8 => قفزة ~ 6.4s
             // خفض الجودة تدريجيًا
             const cur = hls.currentLevel ?? -1;
             if(stallCnt % 2 === 0 && typeof cur === "number" && cur > 0){
@@ -507,4 +507,5 @@
 </script>
 </body>
 </html>
+
 
