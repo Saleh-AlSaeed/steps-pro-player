@@ -1,1 +1,0 @@
-printf "node_modules/\n.env\nnpm-debug.log*\n.DS_Store\n" > .gitignore
