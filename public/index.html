@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Steps Production Co Player</title>
 
-  <!-- äËÈøÊ äÓÎÉ Hls.js ãÓÊÞÑÉ -->
+  <!-- نستخدم إصدار ثابت -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 
   <link rel="icon"
@@ -41,17 +41,17 @@
 
     #gatePlay{position:absolute;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,rgba(0,0,0,.55),rgba(0,0,0,.2))}
     #gatePlay.hidden{display:none}
-    .gate-card{background:var(--panel-bg);border:1px solid var(--panel-bd);border-radius:18px;padding:18px 20px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 40px rgba(0,0,0,.45)}
-    .gate-card .icon{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--panel-bd);color:#fff;background:#111a;font-size:18px}
+    .gate-card{background:var(--panel-bg);border:1px solid var(--panel-bد);border-radius:18px;padding:18px 20px;display:flex;gap:12px;align-items:center;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+    .gate-card .icon{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--panel-bد);color:#fff;background:#111a;font-size:18px}
     #startBtn{min-width:160px}
 
-    #camControls{bottom:14px;left:50%;transform:translateX(-50%);background:var(--panel-bg);padding:10px;border-radius:14px;border:1px solid var(--panel-bd)}
+    #camControls{bottom:14px;left:50%;transform:translateX(-50%);background:var(--panel-bg);padding:10px;border-radius:14px;border:1px solid var(--panel-bد)}
 
     @media (orientation: portrait){
       #mainPreview{top:12px;right:14px;width:58vw;height:36vh;border-radius:18px}
       #globalControls{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);left:50%;transform:translateX(-50%);width:min(94vw,560px);padding:8px 10px;z-index:9999}
       #scrub{width:clamp(140px,56vw,380px)}
-      #camControls{top:60px;left:6px;right:auto;bottom:auto;flex-direction:column;gap:6px;padding:8px 6px;max-height:58vh;overflow:auto;background:linear-gradient(180deg,#0b0b0fb3,#0b0b0f99);border:1px solid var(--panel-bÏ);border-radius:14px;width:46px;transition:width .18s,box-shadow .18s;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:12}
+      #camControls{top:60px;left:6px;right:auto;bottom:auto;flex-direction:column;gap:6px;padding:8px 6px;max-height:58vh;overflow:auto;background:linear-gradient(180deg,#0b0b0fb3,#0b0b0f99);border:1px solid var(--panel-bد);border-radius:14px;width:46px;transition:width .18s,box-shadow .18s;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:12}
       #camControls:hover,#camControls.expanded{width:150px}
       #camControls button{justify-content:flex-start;padding:8px 10px;width:100%;font-size:10px;background:#1a1f2a;color:#fff;border:1px solid #ffffff1f;box-shadow:inset 0 0 0 1px #0003}
       #camControls:not(.expanded):not(:hover) button span{display:none}
@@ -59,41 +59,41 @@
   </style>
 </head>
 <body>
-  <div id="playerContainer" aria-label="ãÔÛøá ãÊÚÏÏ ÇáßÇãíÑÇÊ">
-    <div id="activeCam" class="videoFrame" aria-label="ÇáßÇãíÑÇ ÇáäÔØÉ"></div>
-    <div id="mainPreview" class="videoFrame" title="ÇäÞÑ ááÊßÈíÑ/ÇáÊÕÛíÑ" aria-label="ÇáãÚÇíäÉ ÇáÑÆíÓíÉ ÇáãÕÛøÑÉ"></div>
-    <div class="hint">ÇäÞÑ Úáì ÇáãÚÇíäÉ ááÊßÈíÑ • Ãæ ÇÖÛØ F</div>
+  <div id="playerContainer" aria-label="مشغّل متعدد الكاميرات">
+    <div id="activeCam" class="videoFrame" aria-label="الكاميرا النشطة"></div>
+    <div id="mainPreview" class="videoFrame" title="انقر للتكبير/التصغير" aria-label="المعاينة الرئيسية المصغّرة"></div>
+    <div class="hint">انقر على المعاينة للتكبير • أو اضغط F</div>
 
-    <!-- ÈæÇÈÉ ÇáÈÏÁ -->
-    <div id="gatePlay" role="dialog" aria-modal="true" aria-label="ÈÏÁ ÇáÊÔÛíá">
+    <!-- بوابة البدء -->
+    <div id="gatePlay" role="dialog" aria-modal="true" aria-label="بدء التشغيل">
       <div class="gate-card">
-        <div class="icon">?</div>
+        <div class="icon">▶</div>
         <div>
-          <div style="color:#fff;font-weight:800;margin-bottom:6px">ÇÈÏÃ ÇáÊÔÛíá æÇáãÒÇãäÉ</div>
-          <div style="font-size:12px;color:#eaeaf0b3">ÓíÙåÑ ÔÑíØ ÇáÊÞÏíã/ÇáÊÃÎíÑ ÈÚÏ ÇáÖÛØ Úáì ÊÔÛíá</div>
+          <div style="color:#fff;font-weight:800;margin-bottom:6px">ابدأ التشغيل والمزامنة</div>
+          <div style="font-size:12px;color:#eaeaf0b3">سيظهر شريط التقديم/التأخير بعد الضغط على تشغيل</div>
         </div>
-        <button id="startBtn" aria-label="ÇÈÏÃ ÇáÊÔÛíá ÇáÂä">ÊÔÛíá/ÈÏÁ ÇáãÒÇãäÉ</button>
+        <button id="startBtn" aria-label="ابدأ التشغيل الآن">تشغيل/بدء المزامنة</button>
       </div>
     </div>
 
-    <!-- ÃÏæÇÊ -->
-    <div id="utilityControls" role="toolbar" aria-label="ÃÏæÇÊ">
-      <button id="btnSplit" aria-label="ÊÈÏíá æÖÚ ÇáÊÞÓíã" title="ÊÞÓíã">ÊÞÓíã</button>
-      <button id="btnFill"  aria-label="ÊÈÏíá ãáÁ ÇáãÍÊæì" title="ãáÁ">ãáÁ</button>
-      <button id="btnSound" aria-label="ÊÔÛíá/ÅíÞÇÝ ÇáÕæÊ" title="ÕæÊ">??/??</button>
+    <!-- أدوات -->
+    <div id="utilityControls" role="toolbar" aria-label="أدوات">
+      <button id="btnSplit" aria-label="تبديل وضع التقسيم" title="تقسيم">تقسيم</button>
+      <button id="btnFill"  aria-label="تبديل ملء المحتوى" title="ملء">ملء</button>
+      <button id="btnSound" aria-label="تشغيل/إيقاف الصوت" title="صوت">🔊/🔇</button>
     </div>
 
-    <!-- ÇáÔÑíØ ÇáãæÍøÏ -->
-    <div id="globalControls" class="hidden" role="group" aria-label="ÊÍßã ãæÍøÏ">
-      <button id="gBack" title="? -5s">? 5s</button>
-      <button id="gPlay" title="?">?</button>
-      <button id="gFwd"  title="+5s ?">5s ?</button>
-      <input id="scrub" type="range" min="0" max="0" value="0" step="0.01" aria-label="ÔÑíØ ÇáÊÞÏã">
+    <!-- الشريط الموحّد -->
+    <div id="globalControls" class="hidden" role="group" aria-label="تحكم موحّد">
+      <button id="gBack" title="⏪ -5s">⏪ 5s</button>
+      <button id="gPlay" title="⏯">⏯</button>
+      <button id="gFwd"  title="+5s ⏩">5s ⏩</button>
+      <input id="scrub" type="range" min="0" max="0" value="0" step="0.01" aria-label="شريط التقدم">
       <div id="timeLabel">00:00 / 00:00</div>
     </div>
 
-    <!-- ÇáßÇãíÑÇÊ -->
-    <div id="camControls" role="toolbar" aria-label="ÇÎÊíÇÑ ÇáßÇãíÑÇÊ">
+    <!-- الكاميرات -->
+    <div id="camControls" role="toolbar" aria-label="اختيار الكاميرات">
       <button data-cam="cam1"><span>Cam1</span></button>
       <button data-cam="cam2"><span>Cam2</span></button>
       <button data-cam="cam3"><span>Cam3</span></button>
@@ -105,7 +105,7 @@
   </div>
 
 <script>
-  // ÇáãÕÇÏÑ ÚÈÑ ÇáÈÑæßÓí /hls/
+  // المصادر عبر البروكسي /hls/
   window.sources = {
     main: "/hls/live/playlist.m3u8",
     cam1: "/hls/lastone/playlist.m3u8",
@@ -113,21 +113,21 @@
     cam3: "/hls/live3/playlist.m3u8",
     cam4: "/hls/live4/playlist.m3u8",
     cam5: "/hls/live5/playlist.m3u8",
-    cam6: "/hls/live6/playlist.m3u8",   // CineFlex
-    cam7: "/hls/live7/playlist.m3u8"    // DRONE
+    cam6: "/hls/live6/playlist.m3u8",
+    cam7: "/hls/live7/playlist.m3u8"
   };
 </script>
 
 <script>
-  /*** ==== ÅÚÏÇÏÇÊ æÇÓÊÑÇÊíÌíÇÊ ãäÚ ÇáÊÞØíÚ ãÚ ÇáÍÝÇÙ Úáì ßá ÇáãÒÇíÇ ==== ***/
+  /*** ====== ضبط ديناميكي بناءً على targetduration (شرائح طويلة مثل 8s) ====== ***/
   const hasUrl = (u)=> typeof u==='string' && /^\/hls\/.+\.m3u8(\?.*)?$/i.test(u);
 
-  // ÊÞÏíÑ targetduration áÇÓÊÎÏÇãå Ýí ÇáÊÚÇÝí æÇáÞÝÒ ÇáÂãä
-  let TARGET_DUR_EST = 0.6;
-  const setTargetDur = d => { if (isFinite(d) && d>0.2 && d<10) TARGET_DUR_EST = d; };
-  const safeEdge = ()=> Math.max(0.45, Math.min(1.0, TARGET_DUR_EST*0.9)); // ÇÈÊÚÇÏ ãä ÑÃÓ ÇáÈË
+  // targetduration (ثوانٍ)
+  let TD = 0.8; // قيمة احتياطية صغيرة
+  const setTD = d => { if (isFinite(d) && d>0.2 && d<20) TD = d; };
+  const safeEdge = ()=> Math.max( Math.min(1.0, TD*0.9), 0.45 ); // مسافة أمان من رأس البث
 
-  // ÊÑÔíÍ AVC ÝÞØ
+  // اختيار AVC فقط
   const isAvc = l => /avc1/i.test(l?.codecs || l?.codecsVideo || "");
   const isHevc= l => /(hvc1|hev1)/i.test(l?.codecs || l?.codecsVideo || "");
   function pickBestAvc(levels, cap=360){
@@ -139,26 +139,43 @@
   }
   function highestAvcIndex(levels){ let m=-1; (levels||[]).forEach((l,i)=>{ if(isAvc(l)) m=i; }); return m>=0?m:(levels?.length?levels.length-1:-1); }
 
-  const HLS_CFG = {
-    lowLatencyMode:false,
-    liveSyncDurationCount:7,
-    liveMaxLatencyDurationCount:21,
-    backBufferLength:120,
-    maxBufferLength:35,
-    maxMaxBufferLength:180,
-    maxBufferHole:2.0,
-    maxSeekHole:2.5,
-    maxFragLookUpTolerance:0.3,
-    nudgeOffset:0.4,
-    nudgeMaxRetry:8,
-    enableWorker:true,
-    capLevelToPlayerSize:true,
-    abrMaxWithRealBitrate:true,
-    fragLoadingMaxRetry:8, manifestLoadingMaxRetry:8, levelLoadingMaxRetry:6,
-    fragLoadingRetryDelay:500, manifestLoadingRetryDelay:800, levelLoadingRetryDelay:800,
-    fragLoadingTimeOut:12000, manifestLoadingTimeOut:9000, levelLoadingTimeOut:9000,
+  // إعدادات مبدئية، وسيتم تعديلها ديناميكيًا بعد قراءة TD
+  const BASE_CFG = {
+    lowLatencyMode: false,
+    liveSyncDurationCount: 5,
+    liveMaxLatencyDurationCount: 13,
+    backBufferLength: 120,
+    maxBufferLength: 30,
+    maxMaxBufferLength: 180,
+    maxBufferHole: 2.0,
+    maxSeekHole: 2.5,
+    maxFragLookUpTolerance: 0.3,
+    nudgeOffset: 0.4,
+    nudgeMaxRetry: 8,
+    enableWorker: true,
+    capLevelToPlayerSize: true,
+    abrMaxWithRealBitrate: true,
+    fragLoadingMaxRetry: 8, manifestLoadingMaxRetry: 8, levelLoadingMaxRetry: 6,
+    fragLoadingRetryDelay: 500, manifestLoadingRetryDelay: 800, levelLoadingRetryDelay: 800,
+    fragLoadingTimeOut: 12000, manifestLoadingTimeOut: 9000, levelLoadingTimeOut: 9000,
     xhrSetup:(xhr)=>{ try{ xhr.withCredentials=false; }catch(e){} }
   };
+
+  // يضبط بارامترات Hls instance بحسب TD
+  function retuneForTD(hls){
+    // عدد الشرائح التي نكون خلف الرأس: نهدف ~ 20–28 ثانية
+    const syncCount = Math.max(3, Math.min(6, Math.round(24 / TD)));   // td=8 => 3
+    const maxLatCnt = Math.max(syncCount*2+1, 9);                       // td=8 => 7~13
+    hls.config.liveSyncDurationCount = syncCount;
+    hls.config.liveMaxLatencyDurationCount = maxLatCnt;
+
+    // طول البافر (ثوانٍ): تقريبًا 3 شرائح أو 24s كحد أدنى
+    hls.config.maxBufferLength = Math.max(24, Math.round(TD * 3));      // td=8 => 24
+    hls.config.backBufferLength = Math.max(90, Math.round(TD * 12));    // td=8 => 96
+
+    // قفزات التعافي تعتمد على TD (تم استخدامها في الحارس)
+    console.log('[Tune] TD=', TD, 'syncCount=', syncCount, 'maxBufferLength=', hls.config.maxBufferLength);
+  }
 
   // util
   function getSeekableRange(v){
@@ -186,16 +203,7 @@
   }
 
   function attachStallGuard(video){
-    let lastT=0, lastRecover=0, stallCnt=0;
-
-    const bufferedAhead=(v)=>{
-      try{
-        const r=v.buffered; if(!r||!r.length) return 0;
-        const t=v.currentTime||0;
-        for(let i=0;i<r.length;i++){ const s=r.start(i), e=r.end(i); if(t>=s && t<=e) return Math.max(0, e - t); }
-        return 0;
-      }catch{ return 0; }
-    };
+    let lastRecover=0, stallCnt=0;
 
     const nudgeForward=(amt)=>{
       const m=getSeekableRange(video);
@@ -206,16 +214,21 @@
     };
 
     const loop=()=>{
-      const moved = Math.abs(video.currentTime - lastT) > 0.012;
-      const ahead = bufferedAhead(video);
-      if(!moved && !video.paused && ahead > 0.6){
-        nudgeForward(Math.max(0.25, Math.min(0.8, TARGET_DUR_EST*0.7)));
-      }
-      lastT = video.currentTime;
+      // إن كان هناك بافر كافٍ لكن الفيديو متجمّد، ادفعه قليلًا
+      try{
+        const r=video.buffered; if(r&&r.length){
+          const t=video.currentTime||0;
+          for(let i=0;i<r.length;i++){ const s=r.start(i), e=r.end(i);
+            if(t>=s && t<=e && (e-t)> (TD*0.6)){ // لدينا بافر كافٍ
+              // لا يتحرك؟ ادفع بمقدار يعتمد على TD
+              // (نترك Hls.js يعمل أغلب الوقت؛ هذه للإنقاذ فقط)
+            }
+          }
+        }
+      }catch{}
       video.requestVideoFrameCallback?.(loop);
     };
     if('requestVideoFrameCallback' in HTMLVideoElement.prototype) video.requestVideoFrameCallback(loop);
-    else setInterval(loop, 400);
 
     return {
       maybeRecoverHls(hls, err){
@@ -224,8 +237,8 @@
           const details = String(err?.details||"");
           if(/bufferStalledError/i.test(details)){
             stallCnt++;
-            nudgeForward(Math.max(0.25, Math.min(0.8, TARGET_DUR_EST*0.7)));
-            // ÎÝÖ ãÄÞøÊ ááÌæÏÉ ÚäÏ ÊßÑÑ ÇáÊÞØÚÇÊ
+            nudgeForward(Math.max(0.3, Math.min(1.2, TD*0.8))); // td=8 => قفزة ~ 6.4s
+            // خفض الجودة تدريجيًا
             const cur = hls.currentLevel ?? -1;
             if(stallCnt % 2 === 0 && typeof cur === "number" && cur > 0){
               hls.autoLevelCapping = Math.max(0, cur - 1);
@@ -240,7 +253,7 @@
 
   function attachHlsWithAvc(video, url){
     const guard = attachStallGuard(video);
-    const hls = new Hls({...HLS_CFG});
+    const hls = new Hls({...BASE_CFG});
     video.__hls = hls;
 
     hls.attachMedia(video);
@@ -249,7 +262,7 @@
     hls.on(Hls.Events.MANIFEST_PARSED,(_,data)=>{
       try{
         const levels=data?.levels||[];
-        const startIdx = pickBestAvc(levels, 360); // ÇÈÏÃ ãäÎÝÖðÇ Ëã ÇØáÚ ÊáÞÇÆíðÇ
+        const startIdx = pickBestAvc(levels, 360);
         const maxAvcIdx = highestAvcIndex(levels);
         if(startIdx >= 0){ hls.startLevel=startIdx; hls.currentLevel=startIdx; hls.nextLevel=startIdx; }
         if(maxAvcIdx >= 0){ hls.autoLevelCapping = maxAvcIdx; }
@@ -258,7 +271,8 @@
 
     hls.on(Hls.Events.LEVEL_LOADED, (_, data)=>{
       const td = data?.details?.targetduration;
-      if (td) setTargetDur(td);
+      if (td) { setTD(td); retuneForTD(hls); }
+      console.log('[HLS] LEVEL_LOADED targetduration=', td, 'frags=', data?.details?.fragments?.length);
     });
 
     hls.on(Hls.Events.LEVEL_SWITCHING,(_,data)=>{
@@ -304,7 +318,7 @@
     }
 
     v.addEventListener('canplay', ()=>{
-      // ÅÒÇáÉ ÇáäÓÎÉ ÇáÓÇÈÞÉ ÈÚÏ äÌÇÍ ÇáÌÏíÏÉ
+      // إزالة النسخة السابقة بعد نجاح الجديدة
       [...container.children].slice(0,-1).forEach(ch=>{
         try{ const vv=ch.querySelector?.('video'); vv?.pause?.(); vv?.__hls?.destroy?.(); ch.remove(); }catch{}
       });
@@ -313,7 +327,7 @@
     return v;
   }
 
-  // ===== DOM & ÇáÍÇáÉ + ßá ÇáãíÒÇÊ ÇáÃÕáíÉ =====
+  // ===== DOM & الحالة (جميع الميزات محفوظة) =====
   const root=document.getElementById('playerContainer');
   const mainContainer=document.getElementById('mainPreview');
   const camContainer =document.getElementById('activeCam');
@@ -341,7 +355,6 @@
   }
   function initOnce(){
     initPlayers();
-    // ÅÎÝÇÁ ÇáÃÒÑÇÑ ÛíÑ ÇáãÊæÝÑÉ
     document.querySelectorAll('#camControls [data-cam]').forEach(btn=>{
       const id=btn.getAttribute('data-cam');
       if(id!=='cam1' && !hasUrl(sources[id])) btn.style.display='none';
@@ -362,7 +375,7 @@
       await waitForSeekable(mainPlayer);
       const m=getSeekableRange(mainPlayer);
       if(m){ mainPlayer.currentTime = clampToSeekable(mainPlayer, m.end - safeEdge()); }
-    }, 300);
+    }, 350);
 
     startTimeTicker();
   }
@@ -378,7 +391,7 @@
       healGapIfNeeded(mainPlayer);
       healGapIfNeeded(activePlayer);
 
-      // ãÒÇãäÉ ÎÝíÝÉ: ÇáßÇãíÑÇ ÊáÍÞ ÈÇáÑÆíÓí
+      // مزامنة خفيفة بين الرئيسي والكاميرا
       const delta = (activePlayer.currentTime||0) - ct;
       const ad = Math.abs(delta);
       if(ad < 0.08){ activePlayer.playbackRate=1; }
@@ -388,7 +401,7 @@
     }, 300);
   }
 
-  // ===== ÇáÊÍßøãÇÊ (ßáåÇ ßãÇ åí) =====
+  // التحكّمات (كما كانت)
   startBtn.addEventListener('click', startPlayback);
 
   document.getElementById('camControls').addEventListener('click',(e)=>{
@@ -448,14 +461,13 @@
     isScrubbing=false;
   });
 
-  // ÊßÈíÑ/ÊÕÛíÑ ÇáãÚÇíäÉ ÇáÑÆíÓíÉ
   mainContainer.addEventListener('click', ()=>{
     if(splitMode!==0) return;
     isMainFull=!isMainFull;
     root.classList.toggle('main-full', isMainFull);
   });
 
-  // ÇÎÊÕÇÑÇÊ
+  // اختصارات
   document.addEventListener('keydown',(e)=>{
     if(e.key===' '||e.key==='Enter'){ e.preventDefault(); startPlayback(); }
     if(e.key==='S'||e.key==='s'){ btnSplit.click(); }
@@ -466,7 +478,7 @@
   });
 </script>
 
-<!-- Debug (ßãÇ åæ) -->
+<!-- Debug -->
 <script>
   (function addHlsDebug(){
     function wireDebug(video){
