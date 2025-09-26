@@ -4,7 +4,8 @@
 # احتياطي: أي طلب لـ /hls/* يُعاد توجيهه مباشرةً إلى الوركر
 [[redirects]]
   from = "/hls/*"
-  to = "https://fancy-resonance-1b8f.salreggea1.workers.dev/hls/:splat"
+  to = const WORKER_BASE = 'https://fancy-resonance-1b8f.salreggea1.workers.dev';
   status = 302
   force = true
   headers = { Cache-Control = "no-store" }
+
