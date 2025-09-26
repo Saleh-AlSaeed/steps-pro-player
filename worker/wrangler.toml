@@ -3,11 +3,11 @@ main = "src/index.js"
 compatibility_date = "2025-09-01"
 
 [vars]
-# استخدم http مع الـ IP لتفادي TLS مع عنوان IP. إن كان عندك دومين بشهادة صحيحة غيّرها إلى https://your-origin.example.com
+# استخدم http مع الـ IP إن لم تكن لديك شهادة HTTPS على الدومين الأصلي
 ORIGIN_BASE = "http://46.152.17.35"
 
-# مهلة طلبات المنبع (ms)
+# مهلة المنبع (ms)
 PROXY_TIMEOUT_MS = "15000"
 
-# مدة كاش للشرائح (ثواني)
+# مدة الكاش للشرائح (ثواني)
 CACHE_SEGMENT_SECONDS = "25"
