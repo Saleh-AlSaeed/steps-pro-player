@@ -1,1 +1,4 @@
-printf "node_modules/\n.env\nnpm-debug.log*\n.DS_Store\n" > .gitignore
+node_modules/
+.env
+npm-debug.log*
+.DS_Store
