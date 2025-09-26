@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Steps Production Co Player</title>
 
-  <!-- HLS.js -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <!-- HLS.js (نسخة محددة وثابتة لتفادي تغييرات مفاجئة) -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 
-  <!-- أيقونة بسيطة -->
   <link rel="icon"
         href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230b0b0f'/%3E%3Cpolygon points='26,20 26,44 46,32' fill='%23e53935'/%3E%3C/svg%3E" />
 
@@ -100,29 +99,29 @@
       <button data-cam="cam3"><span>Cam3</span></button>
       <button data-cam="cam4"><span>Cam4</span></button>
       <button data-cam="cam5"><span>Cam5</span></button>
-      <button data-cam="cam6"><span>Drone</span></button>
-      <button data-cam="cam7"><span>Sineflex</span></button>
+      <button data-cam="cam6"><span>Cineflex</span></button>
+      <button data-cam="cam7"><span>Drone</span></button>
     </div>
   </div>
-  
-<script>
-  <!-- المصادر عبر البروكسي /hls/ -->
-  window.sources = {
-    main: "/hls/live/playlist.m3u8",
-    cam1: "/hls/lastone/playlist.m3u8",
-    cam2: "/hls/live2/playlist.m3u8",
-    cam3: "/hls/live3/playlist.m3u8",
-    cam4: "/hls/live4/playlist.m3u8",
-    cam5: "/hls/live5/playlist.m3u8",
-    cam6: "/hls/live6/playlist.m3u8",   // CineFlex
-    cam7: "/hls/live7/playlist.m3u8"    // DRONE
-  };
-</script>
+
+  <script>
+    // المصادر عبر البروكسي /hls/
+    window.sources = {
+      main: "/hls/live/playlist.m3u8",
+      cam1: "/hls/lastone/playlist.m3u8",
+      cam2: "/hls/live2/playlist.m3u8",
+      cam3: "/hls/live3/playlist.m3u8",
+      cam4: "/hls/live4/playlist.m3u8",
+      cam5: "/hls/live5/playlist.m3u8",
+      cam6: "/hls/live6/playlist.m3u8",  // Cineflex
+      cam7: "/hls/live7/playlist.m3u8"   // Drone
+    };
+  </script>
 
   <script>
     /* ====== إعدادات عامة ====== */
     const hasUrl = (u)=> typeof u==='string' && /^\/hls\/.+\.m3u8(\?.*)?$/i.test(u);
-    const SAFETY_EDGE = 0.25; // نبتعد قليلًا عن نهاية نافذة البث لتفادي إعادة التحميل
+    const SAFETY_EDGE = 0.25; // نبتعد قليلاً عن نهاية نافذة البث لتفادي إعادة التحميل
 
     // إجبار AVC/H.264 فقط وتجنّب HEVC
     function isAvc(l){ return /avc1/i.test(l?.codecs || l?.codecsVideo || ""); }
@@ -141,20 +140,32 @@
       return max>=0 ? max : (levels?.length? levels.length-1 : -1);
     }
 
+    // إعدادات Hls.js مُحسّنة للبث الحي لتقليل الفجوات
     const HLS_CFG = {
-      lowLatencyMode:false,
-      liveSyncDurationCount:3,
-      capLevelToPlayerSize:true,
-      enableWorker:true,
-      maxBufferHole:1.0,
-      maxSeekHole:2.0,
-      nudgeOffset:0.2,
-      nudgeMaxRetry:6,
-      abrMaxWithRealBitrate:true,
-      fragLoadingMaxRetry:6, manifestLoadingMaxRetry:6, levelLoadingMaxRetry:5,
-      fragLoadingRetryDelay:350, manifestLoadingRetryDelay:500, levelLoadingRetryDelay:500,
-      fragLoadingTimeOut:10000, manifestLoadingTimeOut:8000, levelLoadingTimeOut:8000,
-      xhrSetup:(xhr)=>{ try{ xhr.withCredentials=false; }catch(e){} }
+      lowLatencyMode: false,
+      liveSyncDurationCount: 3,
+      liveMaxLatencyDurationCount: 10,
+      backBufferLength: 60,
+      maxBufferLength: 20,
+      maxBufferHole: 0.8,
+      maxSeekHole: 1.5,
+      maxFragLookUpTolerance: 0.25,
+      nudgeOffset: 0.2,
+      nudgeMaxRetry: 6,
+      enableWorker: true,
+      capLevelToPlayerSize: true,
+      abrMaxWithRealBitrate: true,
+      fragLoadingMaxRetry: 6,
+      manifestLoadingMaxRetry: 6,
+      levelLoadingMaxRetry: 5,
+      fragLoadingRetryDelay: 350,
+      manifestLoadingRetryDelay: 500,
+      levelLoadingRetryDelay: 500,
+      fragLoadingTimeOut: 12000,
+      manifestLoadingTimeOut: 9000,
+      levelLoadingTimeOut: 9000,
+      // لا ترسل credentials
+      xhrSetup: (xhr)=>{ try{ xhr.withCredentials=false; }catch(e){} }
     };
 
     /* ====== أدوات مساعدة ====== */
@@ -182,12 +193,38 @@
       try{
         const r=v.buffered; if(!r||!r.length) return false;
         const t=v.currentTime||0;
-        for(let i=0;i<r.length;i++){ const s=r.start(i), e=r.end(i);
-          if(t>=s && t<=e) return false;
+        for(let i=0;i<r.length;i++){
+          const s=r.start(i), e=r.end(i);
+          if(t>=s && t<=e) return false; // داخل بافر
           if(t< s){ v.currentTime = s+0.04; await v.play().catch(()=>{}); return true; }
         }
       }catch(e){}
       return false;
+    }
+
+    // في حالة stall لثوانٍ؛ تقدّم قليلًا
+    function bindStallRecovery(video){
+      let lastTime = 0, stalledAt = 0, checking = false;
+      function check(){
+        if(checking) return;
+        checking = true;
+        const now = video.currentTime || 0;
+        if (Math.abs(now - lastTime) < 0.01 && !video.paused && video.readyState < 3){
+          if(!stalledAt) stalledAt = performance.now();
+          else if (performance.now() - stalledAt > 1200){
+            const m = getSeekableRange(video);
+            if (m){
+              video.currentTime = clampToSeekable(video, (video.currentTime||m.end) + 0.3);
+            }
+            stalledAt = 0;
+          }
+        } else {
+          stalledAt = 0;
+        }
+        lastTime = now;
+        checking = false;
+      }
+      setInterval(check, 500);
     }
 
     /* ====== إنشاء فيديو مع Hls.js (AVC فقط) ====== */
@@ -213,7 +250,10 @@
           if(l && isHevc(l)){
             const lv=hls.levels||[];
             const avc = lv.map((x,i)=>({i,h:x.height||0,avc:isAvc(x)})).filter(x=>x.avc);
-            if(avc.length){ let best = avc.reduce((a,b)=> b.h<=480 && b.h>a.h ? b : a, avc[0]); hls.nextLevel = best.i; }
+            if(avc.length){
+              let best = avc.reduce((a,b)=> b.h<=480 && b.h>a.h ? b : a, avc[0]);
+              hls.nextLevel = best.i;
+            }
           }
         }catch(e){}
       });
@@ -221,10 +261,12 @@
       hls.on(Hls.Events.ERROR,(_,err)=>{
         if(err?.fatal){
           try{ hls.destroy(); }catch(e){}
-          // محاولة بسيطة لإعادة الإنشاء
           try{ attachHlsWithAvc(video, url); }catch(e){}
         }
       });
+
+      // تعافي من stalls
+      bindStallRecovery(video);
 
       return hls;
     }
@@ -242,13 +284,16 @@
       }else if(hasUrl(url) && v.canPlayType('application/vnd.apple.mpegURL')){
         v.src=url;
       }else{
-        v.src=url; // احتياط
+        v.src=url;
       }
 
       v.addEventListener('canplay', ()=>{
         // إزالة المثال القديم بعد نجاح الجديد
         [...container.children].slice(0,-1).forEach(ch=>{
-          try{ const vv=ch.querySelector?.('video'); vv?.pause?.(); vv?.__hls?.destroy?.(); ch.remove(); }catch(e){}
+          try{
+            const vv=ch.querySelector?.('video');
+            vv?.pause?.(); vv?.__hls?.destroy?.(); ch.remove();
+          }catch(e){}
         });
       }, {once:true});
 
@@ -346,7 +391,10 @@
       const newcomer=createVideo(camContainer, sources[id]);
       newcomer.addEventListener('canplay', async ()=>{
         activePlayer=newcomer;
-        if(started){ try{ await activePlayer.play(); }catch(e){} activePlayer.currentTime = clampToSeekable(activePlayer, mainPlayer.currentTime||0); }
+        if(started){
+          try{ await activePlayer.play(); }catch(e){}
+          activePlayer.currentTime = clampToSeekable(activePlayer, mainPlayer.currentTime||0);
+        }
       }, {once:true});
     });
 
@@ -410,37 +458,36 @@
       if(e.key==='ArrowRight'){ gFwd.click(); }
     });
   </script>
-  
+
   <script>
-  (function addHlsDebug(){
-    const on = (el, ev, fn) => el && el.addEventListener && el.addEventListener(ev, fn);
+    (function addHlsDebug(){
+      const on = (el, ev, fn) => el && el.addEventListener && el.addEventListener(ev, fn);
 
-    function wireDebug(video){
-      const h = video && video.__hls;
-      if(!h) return;
+      function wireDebug(video){
+        const h = video && video.__hls;
+        if(!h) return;
 
-      h.on(Hls.Events.MANIFEST_PARSED, (_, data)=>{
-        console.log('[HLS] MANIFEST_PARSED levels=', (data && data.levels||[]).map(l=>({h:l.height, codecs:l.codecs})));
-      });
-      h.on(Hls.Events.LEVEL_LOADED, (_, data)=>{
-        console.log('[HLS] LEVEL_LOADED targetduration=', data?.details?.targetduration, 'frags=', data?.details?.fragments?.length);
-      });
-      h.on(Hls.Events.ERROR, (_, err)=>{
-        console.error('[HLS] ERROR', err?.type, err?.details, err);
-      });
-    }
+        h.on(Hls.Events.MANIFEST_PARSED, (_, data)=>{
+          console.log('[HLS] MANIFEST_PARSED levels=', (data && data.levels||[]).map(l=>({h:l.height, codecs:l.codecs})));
+        });
+        h.on(Hls.Events.LEVEL_LOADED, (_, data)=>{
+          console.log('[HLS] LEVEL_LOADED targetduration=', data?.details?.targetduration, 'frags=', data?.details?.fragments?.length);
+        });
+        h.on(Hls.Events.ERROR, (_, err)=>{
+          console.error('[HLS] ERROR', err?.type, err?.details, err);
+        });
+      }
 
-    // راقب كل فيديو جديد يتم إنشاؤه
-    const mo = new MutationObserver(()=>{
-      document.querySelectorAll('video').forEach(v=>{
-        if(!v.__debugWired && v.__hls){
-          v.__debugWired = true;
-          wireDebug(v);
-        }
+      const mo = new MutationObserver(()=>{
+        document.querySelectorAll('video').forEach(v=>{
+          if(!v.__debugWired && v.__hls){
+            v.__debugWired = true;
+            wireDebug(v);
+          }
+        });
       });
-    });
-    mo.observe(document.body, {childList:true, subtree:true});
-  })();
-</script>
+      mo.observe(document.body, {childList:true, subtree:true});
+    })();
+  </script>
 </body>
 </html>
