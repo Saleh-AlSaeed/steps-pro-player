@@ -29,7 +29,7 @@
 
     #utilityControls,#camControls,#globalControls{position:absolute;z-index:10;display:flex;gap:8px;flex-wrap:wrap}
     #utilityControls{top:10px;right:10px}
-    #globalControls{bottom:70px;left:50%;transform:translateX(-50%);background:var(--panel-bg);padding:10px;border-radius:14px;border:1px solid var(--panel-bد);align-items:center;min-width:340px}
+    #globalControls{bottom:70px;left:50%;transform:translateX(-50%);background:var(--panel-bg);padding:10px;border-radius:14px;border:1px solid var(--panel-bd);align-items:center;min-width:340px}
     #globalControls.hidden{display:none}
 
     button{-webkit-tap-highlight-color:transparent;appearance:none;border:0;outline:0;cursor:pointer;background:var(--btn-bg);color:var(--btn-txt);padding:11px 12px;font-size:12px;font-weight:800;border-radius:12px;letter-spacing:.2px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 8px 18px #000a,0 0 0 0 rgba(211,47,47,.28);transition:transform .12s,box-shadow .12s,background .12s}
@@ -121,7 +121,7 @@
 <script>
   /* ====== أدوات عامة ====== */
   const hasUrl = (u)=> typeof u==='string' && /^\/hls\/.+\.m3u8(\?.*)?$/i.test(u);
-  const SAFETY_EDGE = 0.3;
+  const SAFETY_EDGE = 0.6; // نبتعد أكثر عن رأس البث
 
   // ترشيح AVC فقط
   const isAvc = (l)=> /avc1/i.test(l?.codecs || l?.codecsVideo || "");
@@ -138,20 +138,20 @@
   // إعدادات Hls.js محسّنة
   const HLS_CFG = {
     lowLatencyMode: false,
-    liveSyncDurationCount: 6,
-    liveMaxLatencyDurationCount: 18,
-    backBufferLength: 90,
-    maxBufferLength: 30,
+    liveSyncDurationCount: 7,
+    liveMaxLatencyDurationCount: 21,
+    backBufferLength: 120,
+    maxBufferLength: 35,
     maxMaxBufferLength: 180,
-    maxBufferHole: 1.6,
-    maxSeekHole: 2.2,
-    maxFragLookUpTolerance: 0.25,
-    nudgeOffset: 0.3,
+    maxBufferHole: 2.0,
+    maxSeekHole: 2.5,
+    maxFragLookUpTolerance: 0.3,
+    nudgeOffset: 0.4,
     nudgeMaxRetry: 8,
     enableWorker: true,
     capLevelToPlayerSize: true,
     abrMaxWithRealBitrate: true,
-    // تحمّل أوسع للشبكات
+    // تحمّل الشبكات البطيئة
     fragLoadingMaxRetry: 8,
     manifestLoadingMaxRetry: 8,
     levelLoadingMaxRetry: 6,
@@ -184,7 +184,7 @@
       for(let i=0;i<r.length;i++){
         const s=r.start(i), e=r.end(i);
         if(t>=s && t<=e) return false;
-        if(t<s){ v.currentTime=s+0.05; await v.play().catch(()=>{}); return true; }
+        if(t<s){ v.currentTime=s+0.06; await v.play().catch(()=>{}); return true; }
       }
     }catch{} return false;
   }
@@ -193,16 +193,21 @@
   function attachStallGuard(video){
     let lastT=0, lastFrameTs=performance.now(), lastRecover=0;
 
-    // rVFC لو متاح
+    const nudgeForward = (amt=0.35)=>{
+      const m=getSeekableRange(video);
+      if(m){
+        video.currentTime = clampToSeekable(video, (video.currentTime||m.end) + amt);
+        video.play().catch(()=>{});
+      }
+    };
+
     if ('requestVideoFrameCallback' in HTMLVideoElement.prototype){
       const loop = ()=>{
         try{
-          const ahead = bufferedAhead(video);
           const moved = Math.abs(video.currentTime - lastT) > 0.012;
-          if(!moved && !video.paused && ahead > 0.6){
-            tryNudge(video);
-          }
-          lastT = video.currentTime; 
+          const ahead = bufferedAhead(video);
+          if(!moved && !video.paused && ahead > 0.6){ nudgeForward(0.35); }
+          lastT = video.currentTime;
         }catch{}
         video.requestVideoFrameCallback(loop);
       };
@@ -213,9 +218,8 @@
         const moved = Math.abs(video.currentTime - lastT) > 0.012;
         if(moved) lastFrameTs = now;
         const ahead = bufferedAhead(video);
-        // لم يتحرك منذ فترة ومعنا بافر كفاية
         if(!moved && !video.paused && (now - lastFrameTs) > 900 && ahead > 0.6){
-          tryNudge(video);
+          nudgeForward(0.35);
           lastFrameTs = now;
         }
         lastT = video.currentTime;
@@ -231,23 +235,24 @@
       }catch{ return 0; }
     }
 
-    function tryNudge(v){
-      // قفز بسيط داخل المدى + تشغيل
-      const m=getSeekableRange(v);
-      if(m){
-        v.currentTime = clampToSeekable(v, (v.currentTime||m.end) + 0.25);
-        v.play().catch(()=>{});
-      }
-    }
-
-    // واجهة لاستدعاء recovery من Hls.js عند mediaError
     return {
       maybeRecoverHls(hls, err){
         const now=performance.now();
-        const cd = 2500; // 2.5s cooldown
-        if(now - lastRecover < cd) return;
+        const cooldown = 2500;
+        if(now - lastRecover < cooldown) return;
+
+        // عند bufferStalledError اقفز قليلًا للأمام وقلّل الجودة مؤقتًا
         if(err?.type === Hls.ErrorTypes.MEDIA_ERROR){
-          console.warn('[Guard] recoverMediaError()');
+          const details = err?.details || "";
+          if (/bufferStalledError/i.test(details)) {
+            const td = hls?.levelDetails?.targetduration || hls?.levels?.[hls.currentLevel]?.details?.targetduration || 0.5;
+            nudgeForward(Math.max(0.25, Math.min(0.6, td * 0.6)));
+            // قلل الجودة إن أمكن
+            const cur = hls.currentLevel ?? -1;
+            if (typeof cur === "number" && cur > 0) {
+              hls.autoLevelCapping = Math.max(0, cur - 1);
+            }
+          }
           try{ hls.recoverMediaError(); }catch{}
           lastRecover = now;
         }
@@ -290,7 +295,6 @@
 
     hls.on(Hls.Events.ERROR,(_,err)=>{
       console.error('[HLS] ERROR', err?.type, err?.details, err);
-      // تعافي غير فتّاك (stalled) + تعافي فتّاك
       guard.maybeRecoverHls(hls, err);
       if(err?.fatal){
         try{ hls.destroy(); }catch{}
