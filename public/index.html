@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Steps Production Co Player</title>
 
-  <!-- ثبّت نسخة Hls.js لتفادي تغييرات مفاجئة -->
+  <!-- ثبّت نسخة Hls.js -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 
-  <!-- أيقونة -->
   <link rel="icon"
         href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230b0b0f'/%3E%3Cpolygon points='26,20 26,44 46,32' fill='%23e53935'/%3E%3C/svg%3E" />
 
@@ -30,7 +29,7 @@
 
     #utilityControls,#camControls,#globalControls{position:absolute;z-index:10;display:flex;gap:8px;flex-wrap:wrap}
     #utilityControls{top:10px;right:10px}
-    #globalControls{bottom:70px;left:50%;transform:translateX(-50%);background:var(--panel-bg);padding:10px;border-radius:14px;border:1px solid var(--panel-bd);align-items:center;min-width:340px}
+    #globalControls{bottom:70px;left:50%;transform:translateX(-50%);background:var(--panel-bg);padding:10px;border-radius:14px;border:1px solid var(--panel-bد);align-items:center;min-width:340px}
     #globalControls.hidden{display:none}
 
     button{-webkit-tap-highlight-color:transparent;appearance:none;border:0;outline:0;cursor:pointer;background:var(--btn-bg);color:var(--btn-txt);padding:11px 12px;font-size:12px;font-weight:800;border-radius:12px;letter-spacing:.2px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 8px 18px #000a,0 0 0 0 rgba(211,47,47,.28);transition:transform .12s,box-shadow .12s,background .12s}
@@ -84,7 +83,7 @@
       <button id="btnSound" aria-label="تشغيل/إيقاف الصوت" title="صوت">🔊/🔇</button>
     </div>
 
-    <!-- الشريط الموحّد (بدون Delay) -->
+    <!-- الشريط الموحّد -->
     <div id="globalControls" class="hidden" role="group" aria-label="تحكم موحّد">
       <button id="gBack" title="⏪ -5s">⏪ 5s</button>
       <button id="gPlay" title="⏯">⏯</button>
@@ -120,44 +119,39 @@
 </script>
 
 <script>
-  /* ====== إعدادات عامة ====== */
+  /* ====== أدوات عامة ====== */
   const hasUrl = (u)=> typeof u==='string' && /^\/hls\/.+\.m3u8(\?.*)?$/i.test(u);
-  const SAFETY_EDGE = 0.25; // نبتعد قليلاً عن نهاية نافذة البث لتفادي إعادة التحميل
+  const SAFETY_EDGE = 0.3;
 
-  // إجبار AVC/H.264 فقط وتجنّب HEVC
-  function isAvc(l){ return /avc1/i.test(l?.codecs || l?.codecsVideo || ""); }
-  function isHevc(l){ return /(hvc1|hev1)/i.test(l?.codecs || l?.codecsVideo || ""); }
-  function pickBestAvc(levels, capHeight=480){
+  // ترشيح AVC فقط
+  const isAvc = (l)=> /avc1/i.test(l?.codecs || l?.codecsVideo || "");
+  const isHevc= (l)=> /(hvc1|hev1)/i.test(l?.codecs || l?.codecsVideo || "");
+  function pickBestAvc(levels, capH=480){
     if(!levels?.length) return -1;
     const avc = levels.map((l,i)=>({i,h:l.height||0,avc:isAvc(l)})).filter(x=>x.avc);
     if(!avc.length) return 0;
-    let candidates = avc.filter(x=>x.h && x.h<=capHeight);
-    if(!candidates.length) candidates = avc;
-    candidates.sort((a,b)=>a.h-b.h);
-    return candidates[candidates.length-1].i;
+    let c = avc.filter(x=>x.h && x.h<=capH); if(!c.length) c=avc;
+    c.sort((a,b)=>a.h-b.h); return c[c.length-1].i;
   }
-  function highestAvcIndex(levels){
-    let max=-1; (levels||[]).forEach((l,i)=>{ if(isAvc(l)) max=i; });
-    return max>=0 ? max : (levels?.length? levels.length-1 : -1);
-  }
+  function highestAvcIndex(levels){ let m=-1; (levels||[]).forEach((l,i)=>{ if(isAvc(l)) m=i; }); return m>=0?m:(levels?.length?levels.length-1:-1); }
 
-  // إعدادات Hls.js مُحسّنة للبث الحي لتقليل الفجوات والتقطّع
+  // إعدادات Hls.js محسّنة
   const HLS_CFG = {
     lowLatencyMode: false,
-    liveSyncDurationCount: 4,          // ↑ مساحة زحف أكبر حول رأس البث
-    liveMaxLatencyDurationCount: 12,   // ↑ سماحية أكبر للتأخير
-    backBufferLength: 60,
-    maxBufferLength: 20,
-    maxMaxBufferLength: 120,
-    maxBufferHole: 1.5,                // ↑ لتخفيف أخطاء gap الصغيرة
-    maxSeekHole: 2.0,
+    liveSyncDurationCount: 6,
+    liveMaxLatencyDurationCount: 18,
+    backBufferLength: 90,
+    maxBufferLength: 30,
+    maxMaxBufferLength: 180,
+    maxBufferHole: 1.6,
+    maxSeekHole: 2.2,
     maxFragLookUpTolerance: 0.25,
     nudgeOffset: 0.3,
     nudgeMaxRetry: 8,
     enableWorker: true,
     capLevelToPlayerSize: true,
     abrMaxWithRealBitrate: true,
-    // محاولات وتحمل أعلى للشبكات الأبطأ
+    // تحمّل أوسع للشبكات
     fragLoadingMaxRetry: 8,
     manifestLoadingMaxRetry: 8,
     levelLoadingMaxRetry: 6,
@@ -167,30 +161,21 @@
     fragLoadingTimeOut: 12000,
     manifestLoadingTimeOut: 9000,
     levelLoadingTimeOut: 9000,
-    // لا ترسل credentials
     xhrSetup: (xhr)=>{ try{ xhr.withCredentials=false; }catch(e){} }
   };
 
-  /* ====== أدوات مساعدة ====== */
+  /* ====== util للمدى القابل للبحث ====== */
   function getSeekableRange(v){
-    try{
-      const r=v.seekable; if(!r||!r.length) return null;
-      return {start:r.start(r.length-1), end:r.end(r.length-1)};
-    }catch(e){ return null; }
+    try{ const r=v.seekable; if(!r||!r.length) return null; return {start:r.start(r.length-1), end:r.end(r.length-1)}; }catch{ return null; }
   }
   function clampToSeekable(v,t){
     const m=getSeekableRange(v); if(!m) return t;
-    const a=m.start+0.02, b=m.end-0.02;
-    if(b<=a) return m.start;
+    const a=m.start+0.02, b=m.end-0.02; if(b<=a) return m.start;
     return Math.min(Math.max(t,a), b);
   }
   async function waitForSeekable(v, timeout=8000){
     const t0=performance.now();
-    return new Promise((res)=>{ (function loop(){
-      try{ const r=v.seekable; if(r&&r.length) return res(true); }catch(e){}
-      if(performance.now()-t0>timeout) return res(false);
-      setTimeout(loop,120);
-    })(); });
+    return new Promise((res)=>{ (function loop(){ try{const r=v.seekable; if(r&&r.length) return res(true);}catch{} if(performance.now()-t0>timeout) return res(false); setTimeout(loop,120); })(); });
   }
   async function healGapIfNeeded(v){
     try{
@@ -198,47 +183,84 @@
       const t=v.currentTime||0;
       for(let i=0;i<r.length;i++){
         const s=r.start(i), e=r.end(i);
-        if(t>=s && t<=e) return false; // داخل بافر
-        if(t < s){
-          console.warn("⚠️ Jumping gap from", t, "to", s);
-          v.currentTime = s+0.05;
-          await v.play().catch(()=>{});
-          return true;
-        }
+        if(t>=s && t<=e) return false;
+        if(t<s){ v.currentTime=s+0.05; await v.play().catch(()=>{}); return true; }
       }
-    }catch(e){}
-    return false;
+    }catch{} return false;
   }
 
-  // مراقبة توقف التشغيل (stall) والتعافي الذكي
-  function bindStallRecovery(video){
-    let lastTime = 0, stalledAt = 0, checking = false;
-    setInterval(()=>{
-      if(checking) return; checking = true;
-      const now = video.currentTime || 0;
-      const playing = !video.paused;
-      if (playing && video.readyState < 3 && Math.abs(now - lastTime) < 0.012){
-        if(!stalledAt) stalledAt = performance.now();
-        else if (performance.now() - stalledAt > 1200){
-          const m = getSeekableRange(video);
-          if (m){
-            // ادفع المؤشر قليلًا للأمام داخل seekable
-            video.currentTime = clampToSeekable(video, (video.currentTime||m.end) + 0.3);
-            video.play().catch(()=>{});
+  // حارس Stalls + تعافي نشِط
+  function attachStallGuard(video){
+    let lastT=0, lastFrameTs=performance.now(), lastRecover=0;
+
+    // rVFC لو متاح
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype){
+      const loop = ()=>{
+        try{
+          const ahead = bufferedAhead(video);
+          const moved = Math.abs(video.currentTime - lastT) > 0.012;
+          if(!moved && !video.paused && ahead > 0.6){
+            tryNudge(video);
           }
-          stalledAt = 0;
+          lastT = video.currentTime; 
+        }catch{}
+        video.requestVideoFrameCallback(loop);
+      };
+      video.requestVideoFrameCallback(loop);
+    } else {
+      setInterval(()=>{
+        const now = performance.now();
+        const moved = Math.abs(video.currentTime - lastT) > 0.012;
+        if(moved) lastFrameTs = now;
+        const ahead = bufferedAhead(video);
+        // لم يتحرك منذ فترة ومعنا بافر كفاية
+        if(!moved && !video.paused && (now - lastFrameTs) > 900 && ahead > 0.6){
+          tryNudge(video);
+          lastFrameTs = now;
         }
-      } else {
-        stalledAt = 0;
+        lastT = video.currentTime;
+      }, 400);
+    }
+
+    function bufferedAhead(v){
+      try{
+        const r=v.buffered; if(!r||!r.length) return 0;
+        const t=v.currentTime||0;
+        for(let i=0;i<r.length;i++){ const s=r.start(i), e=r.end(i); if(t>=s && t<=e) return Math.max(0, e - t); }
+        return 0;
+      }catch{ return 0; }
+    }
+
+    function tryNudge(v){
+      // قفز بسيط داخل المدى + تشغيل
+      const m=getSeekableRange(v);
+      if(m){
+        v.currentTime = clampToSeekable(v, (v.currentTime||m.end) + 0.25);
+        v.play().catch(()=>{});
       }
-      lastTime = now; checking = false;
-    }, 500);
+    }
+
+    // واجهة لاستدعاء recovery من Hls.js عند mediaError
+    return {
+      maybeRecoverHls(hls, err){
+        const now=performance.now();
+        const cd = 2500; // 2.5s cooldown
+        if(now - lastRecover < cd) return;
+        if(err?.type === Hls.ErrorTypes.MEDIA_ERROR){
+          console.warn('[Guard] recoverMediaError()');
+          try{ hls.recoverMediaError(); }catch{}
+          lastRecover = now;
+        }
+      }
+    };
   }
 
   /* ====== إنشاء فيديو مع Hls.js (AVC فقط) ====== */
   function attachHlsWithAvc(video, url){
+    const guard = attachStallGuard(video);
     const hls = new Hls({...HLS_CFG});
     video.__hls = hls;
+
     hls.attachMedia(video);
     hls.on(Hls.Events.MEDIA_ATTACHED,()=>{ hls.loadSource(url); });
 
@@ -268,14 +290,14 @@
 
     hls.on(Hls.Events.ERROR,(_,err)=>{
       console.error('[HLS] ERROR', err?.type, err?.details, err);
-      // تعافٍ تلقائي من الأخطاء الفاتلة
+      // تعافي غير فتّاك (stalled) + تعافي فتّاك
+      guard.maybeRecoverHls(hls, err);
       if(err?.fatal){
-        try{ hls.destroy(); }catch(e){}
-        setTimeout(()=>{ try{ attachHlsWithAvc(video, url); }catch(e){} }, 600);
+        try{ hls.destroy(); }catch{}
+        setTimeout(()=>{ try{ attachHlsWithAvc(video, url); }catch{} }, 700);
       }
     });
 
-    bindStallRecovery(video);
     return hls;
   }
 
@@ -298,10 +320,7 @@
     v.addEventListener('canplay', ()=>{
       // إزالة النسخة السابقة بعد نجاح الجديدة
       [...container.children].slice(0,-1).forEach(ch=>{
-        try{
-          const vv=ch.querySelector?.('video');
-          vv?.pause?.(); vv?.__hls?.destroy?.(); ch.remove();
-        }catch(e){}
+        try{ const vv=ch.querySelector?.('video'); vv?.pause?.(); vv?.__hls?.destroy?.(); ch.remove(); }catch{}
       });
     }, {once:true});
 
@@ -350,10 +369,10 @@
     gatePlay.classList.add('hidden');
     globalControls.classList.remove('hidden');
 
-    try{ await mainPlayer.play(); }catch(e){}
-    try{ await activePlayer.play(); }catch(e){}
+    try{ await mainPlayer.play(); }catch{}
+    try{ await activePlayer.play(); }catch{}
 
-    // قف قرب نهاية نافذة البث بأمان لتفادي إعادة التشغيل
+    // قف قرب نهاية نافذة البث بأمان
     setTimeout(async ()=>{
       await waitForSeekable(mainPlayer);
       const m=getSeekableRange(mainPlayer);
@@ -374,11 +393,11 @@
       if(d&&isFinite(d)) scrub.max=d;
       scrub.value=ct||0; timeLabel.textContent=`${fmt(ct)} / ${fmt(d||0)}`;
 
-      // تضميد فجوات إن حصل انتظار
+      // تضميد فجوات
       healGapIfNeeded(mainPlayer);
       healGapIfNeeded(activePlayer);
 
-      // مزامنة خفيفة: اجعل الكاميرا تلحق بالرئيسي
+      // مزامنة خفيفة بين الرئيسي والكاميرا
       const target = ct;
       const delta = (activePlayer.currentTime||0) - target;
       const ad = Math.abs(delta);
@@ -400,7 +419,7 @@
     newcomer.addEventListener('canplay', async ()=>{
       activePlayer=newcomer;
       if(started){
-        try{ await activePlayer.play(); }catch(e){}
+        try{ await activePlayer.play(); }catch{}
         activePlayer.currentTime = clampToSeekable(activePlayer, mainPlayer.currentTime||0);
       }
     }, {once:true});
@@ -436,7 +455,7 @@
   });
   gPlay.addEventListener('click', async()=>{
     if(!started) return;
-    if(mainPlayer.paused){ try{ await mainPlayer.play(); }catch(e){} }
+    if(mainPlayer.paused){ try{ await mainPlayer.play(); }catch{} }
     else { mainPlayer.pause(); }
   });
 
@@ -449,14 +468,14 @@
     isScrubbing=false;
   });
 
-  // تكبير/تصغير على المعاينة الرئيسية بالنقرة (يحافظ على الميزة)
+  // تكبير/تصغير المعاينة
   mainContainer.addEventListener('click', ()=>{
     if(splitMode!==0) return;
     isMainFull=!isMainFull;
     root.classList.toggle('main-full', isMainFull);
   });
 
-  // اختصارات مفيدة
+  // اختصارات
   document.addEventListener('keydown',(e)=>{
     if(e.key===' '||e.key==='Enter'){ e.preventDefault(); startPlayback(); }
     if(e.key==='S'||e.key==='s'){ btnSplit.click(); }
@@ -467,7 +486,7 @@
   });
 </script>
 
-<!-- Debug logs لعزل المشاكل -->
+<!-- Debug -->
 <script>
   (function addHlsDebug(){
     function wireDebug(video){
