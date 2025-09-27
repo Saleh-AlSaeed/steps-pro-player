@@ -5,5 +5,6 @@ compatibility_date = "2025-09-01"
 [vars]
 ORIGIN_BASE = "https://classified-documentation-absent-arbitrary.trycloudflare.com"
 ORIGIN_PATH_PREFIX = "/hls"
-PROXY_TIMEOUT_MS = "15000"
+PROXY_TIMEOUT_MS = "20000"
 CACHE_SEGMENT_SECONDS = "25"
+
