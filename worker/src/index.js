@@ -1,5 +1,7 @@
 // worker/src/index.js
-// يدعم: إعادة كتابة manifest، CORS، HEAD/OPTIONS، وإضافة بادئة للمسار في الأصل (ORIGIN_PATH_PREFIX)
+// نسخــة تُصلّح 405: تدعم HEAD/OPTIONS + تضيف ORIGIN_PATH_PREFIX + رؤوس Debug
+
+const BUILD_ID = "build-405-fix-01";
 
 const TAGS = [
   "EXT-X-KEY","EXT-X-SESSION-KEY","EXT-X-MAP",
@@ -25,10 +27,19 @@ function mimeFor(p){
 function addCors(h){
   h.set("Access-Control-Allow-Origin", "*");
   h.set("Access-Control-Allow-Headers", "Range, Accept, Origin, Referer, User-Agent, Cache-Control");
-  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length");
+  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length, X-Worker-Build, X-Upstream-Path, X-Origin-Prefix");
   h.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  h.set("X-Worker-Build", BUILD_ID);
   return h;
 }
+
+function joinPath(a, b){
+  const A = (a||"").replace(/\/+$/,"");
+  const B = (b||"").replace(/^\/+/,"");
+  return `${A}/${B}`;
+}
+
+function stripProxyPrefix(p){ return p.replace(/^\/hls/i, ""); }
 
 function refToProxy(ref, baseAbsUrl){
   try{
@@ -74,22 +85,14 @@ function basicHeaders(init, pathname){
   return h;
 }
 
-function joinPath(a, b){
-  const A = (a||"").replace(/\/+$/,"");
-  const B = (b||"").replace(/^\/+/,"");
-  return `${A}/${B}`;
-}
+async function fetchUpstream(method, pathWithQuery, env, req){
+  const originBase = new URL(env.ORIGIN_BASE);
+  const originPrefix = env.ORIGIN_PATH_PREFIX || ""; // مثال: "/hls"
+  const u = new URL(req.url);
 
-async function fetchUpstream(req, env, method="GET"){
-  const originBase = new URL(env.ORIGIN_BASE || "http://46.152.17.35");
-  const inUrl = new URL(req.url);
-
-  // احذف /hls من بداية الطلب الوارد ثم أضف بادئة الأصل إن وُجدت
-  const incoming = inUrl.pathname.replace(/^\/hls/i, "");     // مثال: /live/playlist.m3u8
-  const prefix   = (env.ORIGIN_PATH_PREFIX || "");            // مثال: /hls أو فارغ
-  const upstreamPath = joinPath(prefix, incoming);            // مثال: /hls/live/playlist.m3u8
-
-  const upstream = new URL(upstreamPath + inUrl.search, originBase);
+  const incoming = stripProxyPrefix(u.pathname); // "/live/playlist.m3u8"
+  const upstreamPath = joinPath(originPrefix, incoming); // "/hls/live/playlist.m3u8"
+  const upstream = new URL(upstreamPath + u.search, originBase);
 
   const hdrs = new Headers();
   hdrs.set("Accept", "*/*");
@@ -112,14 +115,14 @@ async function fetchUpstream(req, env, method="GET"){
     });
   } finally { clearTimeout(id); }
 
-  return { res, finalUrl: res.url };
+  return { res, upstreamPath: upstream.pathname };
 }
 
 export default {
   async fetch(req, env){
     const url = new URL(req.url);
 
-    // OPTIONS (CORS preflight)
+    // CORS preflight
     if (req.method === "OPTIONS"){
       const h = addCors(new Headers());
       return new Response(null, { status: 204, headers: h });
@@ -134,29 +137,24 @@ export default {
       return new Response("Not Found", { status: 404, headers: addCors(new Headers({ "content-type":"text/plain" })) });
     }
 
-    // نسمح بـ GET و HEAD
     const wantHead = (req.method === "HEAD");
-    const upstream = await fetchUpstream(req, env, wantHead ? "HEAD" : "GET").catch(e=>{
-      return { error: e };
-    });
-    if (upstream?.error){
-      return new Response("Upstream fetch failed: "+String(upstream.error), {
-        status: 502,
-        headers: addCors(new Headers({ "content-type":"text/plain" }))
-      });
+    const method   = wantHead ? "HEAD" : "GET";
+
+    let upstream;
+    try{
+      upstream = await fetchUpstream(method, url.pathname + url.search, env, req);
+    }catch(e){
+      const h = addCors(new Headers({ "content-type":"text/plain" }));
+      return new Response("Upstream fetch failed: "+String(e), { status: 502, headers: h });
     }
 
-    const { res, finalUrl } = upstream;
+    const { res, upstreamPath } = upstream;
 
-    if (res.status >= 400){
-      const h = basicHeaders({ headers: { "content-type":"text/plain" } }, url.pathname);
-      return new Response(`Upstream error ${res.status}`, { status: res.status, headers: h });
-    }
-
-    // HEAD: أعِد الرؤوس فقط
     if (wantHead){
+      // نعيد 200 مع الرؤوس مهما كان ردّ الأصل على HEAD (لتفادي 405)
       const h = basicHeaders({ headers: {} }, url.pathname);
-      // مرّر Content-Type/Length إذا وُجدت
+      h.set("X-Upstream-Path", upstreamPath);
+      h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
       for (const k of ["content-type","content-length","accept-ranges","content-range"]){
         const v = res.headers.get(k);
         if (v) h.set(k.replace(/\b\w/g,m=>m.toUpperCase()), v);
@@ -164,14 +162,20 @@ export default {
       return new Response(null, { status: 200, headers: h });
     }
 
-    // GET
+    if (res.status >= 400){
+      const h = basicHeaders({ headers: { "content-type":"text/plain" } }, url.pathname);
+      h.set("X-Upstream-Path", upstreamPath);
+      h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
+      return new Response(`Upstream error ${res.status}`, { status: res.status, headers: h });
+    }
+
     if (isM3U8(url.pathname)){
       const raw = await res.text();
-      const out = rewriteManifest(raw, finalUrl);
-      return new Response(out, {
-        status: 200,
-        headers: basicHeaders({ headers: { "content-type":"application/vnd.apple.mpegurl" } }, url.pathname),
-      });
+      const out = rewriteManifest(raw, res.url);
+      const h = basicHeaders({ headers: { "content-type":"application/vnd.apple.mpegurl" } }, url.pathname);
+      h.set("X-Upstream-Path", upstreamPath);
+      h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
+      return new Response(out, { status: 200, headers: h });
     }
 
     const h = basicHeaders({ headers: {} }, url.pathname);
@@ -183,6 +187,8 @@ export default {
     if (ar) h.set("Accept-Ranges", ar);
     if (cr) h.set("Content-Range", cr);
     if (cl) h.set("Content-Length", cl);
+    h.set("X-Upstream-Path", upstreamPath);
+    h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
 
     return new Response(res.body, { status: res.status, headers: h });
   }
