@@ -1,7 +1,7 @@
 // worker/src/index.js
-// نسخــة تُصلّح 405: تدعم HEAD/OPTIONS + تضيف ORIGIN_PATH_PREFIX + رؤوس Debug
+// build-405-fix-02: HEAD بلا اتصال بالأصل، تحصين manifest، كاش للشرائح، Debug headers
 
-const BUILD_ID = "build-405-fix-01";
+const BUILD_ID = "build-405-fix-02";
 
 const TAGS = [
   "EXT-X-KEY","EXT-X-SESSION-KEY","EXT-X-MAP",
@@ -27,28 +27,24 @@ function mimeFor(p){
 function addCors(h){
   h.set("Access-Control-Allow-Origin", "*");
   h.set("Access-Control-Allow-Headers", "Range, Accept, Origin, Referer, User-Agent, Cache-Control");
-  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length, X-Worker-Build, X-Upstream-Path, X-Origin-Prefix");
   h.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  h.set("Access-Control-Expose-Headers",
+        "Accept-Ranges, Content-Range, Content-Length, X-Worker-Build, X-Upstream-Path, X-Origin-Prefix");
   h.set("X-Worker-Build", BUILD_ID);
   return h;
 }
 
-function joinPath(a, b){
-  const A = (a||"").replace(/\/+$/,"");
-  const B = (b||"").replace(/^\/+/,"");
-  return `${A}/${B}`;
-}
-
-function stripProxyPrefix(p){ return p.replace(/^\/hls/i, ""); }
+function joinPath(a,b){ const A=(a||"").replace(/\/+$/,""), B=(b||"").replace(/^\/+/,""); return `${A}/${B}`; }
+function stripProxyPrefix(p){ return p.replace(/^\/hls/i,""); }
 
 function refToProxy(ref, baseAbsUrl){
   try{
     const abs = new URL(ref, baseAbsUrl);
-    let p = abs.pathname.replace(/^\/hls/i, "");
-    return `/hls${p}${abs.search || ""}`;
+    const p = abs.pathname.replace(/^\/hls/i, "");
+    return `/hls${p}${abs.search||""}`;
   }catch{
     if (typeof ref === "string" && ref.startsWith("/")){
-      const p = ref.replace(/^\/hls/i, "");
+      const p = ref.replace(/^\/hls/i,"");
       return `/hls${p}`;
     }
     return ref;
@@ -57,9 +53,9 @@ function refToProxy(ref, baseAbsUrl){
 
 function rewriteManifest(text, baseAbsUrl){
   return text.split("\n").map(line=>{
-    const t = line.trim();
+    const t=line.trim();
     if (TAGS_RE.test(t)){
-      return line.replace(/URI="([^"]+)"/gi, (_m, uri)=> `URI="${refToProxy(uri, baseAbsUrl)}"`);
+      return line.replace(/URI="([^"]+)"/gi, (_m,uri)=> `URI="${refToProxy(uri, baseAbsUrl)}"`);
     }
     if (!t || t.startsWith("#")) return line;
     return refToProxy(t, baseAbsUrl);
@@ -67,7 +63,7 @@ function rewriteManifest(text, baseAbsUrl){
 }
 
 function basicHeaders(init, pathname){
-  const h = new Headers(init.headers || {});
+  const h = new Headers(init.headers||{});
   const ct = mimeFor(pathname);
 
   if (isM3U8(pathname)){
@@ -85,23 +81,23 @@ function basicHeaders(init, pathname){
   return h;
 }
 
-async function fetchUpstream(method, pathWithQuery, env, req){
+async function fetchUpstream(req, env, method, isSegment){
   const originBase = new URL(env.ORIGIN_BASE);
-  const originPrefix = env.ORIGIN_PATH_PREFIX || ""; // مثال: "/hls"
-  const u = new URL(req.url);
+  const originPrefix = env.ORIGIN_PATH_PREFIX || ""; // مثل "/hls"
+  const inUrl = new URL(req.url);
 
-  const incoming = stripProxyPrefix(u.pathname); // "/live/playlist.m3u8"
-  const upstreamPath = joinPath(originPrefix, incoming); // "/hls/live/playlist.m3u8"
-  const upstream = new URL(upstreamPath + u.search, originBase);
+  const incoming = stripProxyPrefix(inUrl.pathname);          // /live/playlist.m3u8
+  const upstreamPath = joinPath(originPrefix, incoming);      // /hls/live/playlist.m3u8
+  const upstream = new URL(upstreamPath + inUrl.search, originBase);
 
   const hdrs = new Headers();
   hdrs.set("Accept", "*/*");
   hdrs.set("User-Agent", req.headers.get("user-agent") || "Mozilla/5.0");
-  const range = req.headers.get("range");
-  if (range) hdrs.set("Range", range);
+  const r = req.headers.get("range");
+  if (r) hdrs.set("Range", r);
 
   const controller = new AbortController();
-  const to = Number(env.PROXY_TIMEOUT_MS || 15000);
+  const to = Number(env.PROXY_TIMEOUT_MS || 20000);
   const id = setTimeout(()=>controller.abort("proxy timeout"), to);
 
   let res;
@@ -111,21 +107,22 @@ async function fetchUpstream(method, pathWithQuery, env, req){
       headers: hdrs,
       redirect: "follow",
       signal: controller.signal,
-      cf: { cacheEverything: false, cacheTtl: 0 },
+      cf: isSegment
+        ? { cacheEverything: true, cacheTtl: Number(env.CACHE_SEGMENT_SECONDS || 25) }
+        : { cacheEverything: false, cacheTtl: 0 },
     });
   } finally { clearTimeout(id); }
 
-  return { res, upstreamPath: upstream.pathname };
+  return { res, upstreamPath: upstream.pathname, upstreamUrl: upstream.href };
 }
 
 export default {
   async fetch(req, env){
     const url = new URL(req.url);
 
-    // CORS preflight
+    // OPTIONS (CORS)
     if (req.method === "OPTIONS"){
-      const h = addCors(new Headers());
-      return new Response(null, { status: 204, headers: h });
+      return new Response(null, { status: 204, headers: addCors(new Headers()) });
     }
 
     // Health
@@ -137,58 +134,58 @@ export default {
       return new Response("Not Found", { status: 404, headers: addCors(new Headers({ "content-type":"text/plain" })) });
     }
 
-    const wantHead = (req.method === "HEAD");
-    const method   = wantHead ? "HEAD" : "GET";
+    const isSegment = isTS(url.pathname) || isM4S(url.pathname) || isMP4(url.pathname);
 
-    let upstream;
-    try{
-      upstream = await fetchUpstream(method, url.pathname + url.search, env, req);
-    }catch(e){
-      const h = addCors(new Headers({ "content-type":"text/plain" }));
-      return new Response("Upstream fetch failed: "+String(e), { status: 502, headers: h });
-    }
-
-    const { res, upstreamPath } = upstream;
-
-    if (wantHead){
-      // نعيد 200 مع الرؤوس مهما كان ردّ الأصل على HEAD (لتفادي 405)
+    // HEAD: لا نتصل بالأصل إطلاقًا (لمنع 405/502)
+    if (req.method === "HEAD"){
       const h = basicHeaders({ headers: {} }, url.pathname);
-      h.set("X-Upstream-Path", upstreamPath);
       h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
-      for (const k of ["content-type","content-length","accept-ranges","content-range"]){
-        const v = res.headers.get(k);
-        if (v) h.set(k.replace(/\b\w/g,m=>m.toUpperCase()), v);
-      }
+      h.set("X-Upstream-Path", joinPath(env.ORIGIN_PATH_PREFIX || "", stripProxyPrefix(url.pathname)));
       return new Response(null, { status: 200, headers: h });
     }
 
+    // GET
+    let upstream;
+    try{
+      upstream = await fetchUpstream(req, env, "GET", isSegment);
+    }catch(e){
+      const h = addCors(new Headers({ "content-type":"text/plain" }));
+      h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
+      return new Response("Upstream fetch failed: "+String(e), { status: 502, headers: h });
+    }
+
+    const { res, upstreamPath, upstreamUrl } = upstream;
+
     if (res.status >= 400){
       const h = basicHeaders({ headers: { "content-type":"text/plain" } }, url.pathname);
-      h.set("X-Upstream-Path", upstreamPath);
       h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
-      return new Response(`Upstream error ${res.status}`, { status: res.status, headers: h });
+      h.set("X-Upstream-Path", upstreamPath);
+      return new Response(`Upstream error ${res.status} for ${upstreamUrl}`, { status: res.status, headers: h });
     }
 
+    // manifest
     if (isM3U8(url.pathname)){
-      const raw = await res.text();
-      const out = rewriteManifest(raw, res.url);
       const h = basicHeaders({ headers: { "content-type":"application/vnd.apple.mpegurl" } }, url.pathname);
-      h.set("X-Upstream-Path", upstreamPath);
       h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
-      return new Response(out, { status: 200, headers: h });
+      h.set("X-Upstream-Path", upstreamPath);
+
+      try{
+        const raw = await res.text();
+        const out = rewriteManifest(raw, res.url);
+        return new Response(out, { status: 200, headers: h });
+      }catch(e){
+        // لو فشل التحويل لأي سبب، أعِد الخام بدل 500
+        const fallback = await res.arrayBuffer();
+        return new Response(fallback, { status: 200, headers: h });
+      }
     }
 
+    // segments / keys / غيرها
     const h = basicHeaders({ headers: {} }, url.pathname);
-    const ct = res.headers.get("content-type");
-    const ar = res.headers.get("accept-ranges");
-    const cr = res.headers.get("content-range");
-    const cl = res.headers.get("content-length");
-    if (ct) h.set("Content-Type", ct);
-    if (ar) h.set("Accept-Ranges", ar);
-    if (cr) h.set("Content-Range", cr);
-    if (cl) h.set("Content-Length", cl);
-    h.set("X-Upstream-Path", upstreamPath);
+    const copy = (k)=>{ const v=res.headers.get(k); if(v) h.set(k.replace(/\b\w/g,m=>m.toUpperCase()), v); };
+    ["content-type","accept-ranges","content-range","content-length"].forEach(copy);
     h.set("X-Origin-Prefix", env.ORIGIN_PATH_PREFIX || "");
+    h.set("X-Upstream-Path", upstreamPath);
 
     return new Response(res.body, { status: res.status, headers: h });
   }
