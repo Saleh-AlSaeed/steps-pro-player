@@ -2,14 +2,11 @@ name = "races-player"
 main = "src/index.js"
 compatibility_date = "2025-09-01"
 [vars]
+# دومين التَنِل الذي أثبتناه
 ORIGIN_BASE = "https://classified-documentation-absent-arbitrary.trycloudflare.com"
+# لأن الأصل يخدم تحت /hls
 ORIGIN_PATH_PREFIX = "/hls"
-PROXY_TIMEOUT_MS = "15000"
+# اختياري لتحسين السلاسة عبر كاش شرائح قصير
 CACHE_SEGMENT_SECONDS = "25"
-
-# (اختياري) إن كان الأصل يتطلب Host معيّن لكنك تضطر للاتصال على IP:
-# اجعل ORIGIN_BASE = "http://example.com" وأضف:
-# UPSTREAM_RESOLVE_IP = "46.152.17.35"
-# سيُنشئ اتصالاً إلى الآيبي لكن بـ Host=example.com
-# UPSTREAM_RESOLVE_IP = "46.152.17.35"
+PROXY_TIMEOUT_MS = "15000"
 
