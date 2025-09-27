@@ -1,10 +1,9 @@
 [build]
   publish = "public"
 
-# احتياطي: أي طلب لـ /hls/* يُعاد توجيهه مباشرةً إلى الوركر
+# مرّر كل ما تحت /hls/* إلى الوركر الجديد
 [[redirects]]
   from = "/hls/*"
-  to = "https://fancy-resonance-1b8f.salreggea1.workers.dev/hls/:splat"
-  status = 302
-  force = true
-  headers = { Cache-Control = "no-store" }
+  to   = "https://fancy-resonance-1b8f.salreggea1.workers.dev/hls/:splat"
+  status = 200
+  force  = true
