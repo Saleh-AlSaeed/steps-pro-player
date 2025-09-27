@@ -1,4 +1,5 @@
 // worker/src/index.js
+// يدعم: إعادة كتابة manifest، CORS، HEAD/OPTIONS، وإضافة بادئة للمسار في الأصل (ORIGIN_PATH_PREFIX)
 
 const TAGS = [
   "EXT-X-KEY","EXT-X-SESSION-KEY","EXT-X-MAP",
@@ -19,6 +20,14 @@ function mimeFor(p){
   if (isMP4(p))  return "video/mp4";
   if (isKEY(p))  return "application/octet-stream";
   return "application/octet-stream";
+}
+
+function addCors(h){
+  h.set("Access-Control-Allow-Origin", "*");
+  h.set("Access-Control-Allow-Headers", "Range, Accept, Origin, Referer, User-Agent, Cache-Control");
+  h.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Range, Content-Length");
+  h.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  return h;
 }
 
 function refToProxy(ref, baseAbsUrl){
@@ -46,22 +55,6 @@ function rewriteManifest(text, baseAbsUrl){
   }).join("\n");
 }
 
-/* ===== CORS & Headers ===== */
-const CORS_EXPOSE = "Accept-Ranges, Content-Range, Content-Length";
-const CORS_ALLOWH = "Range, User-Agent, Referer, Origin, Cache-Control, Content-Type";
-
-function corsPreflight(){
-  return new Response(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-      "Access-Control-Allow-Headers": CORS_ALLOWH,
-      "Access-Control-Max-Age": "86400",
-    },
-  });
-}
-
 function basicHeaders(init, pathname){
   const h = new Headers(init.headers || {});
   const ct = mimeFor(pathname);
@@ -70,7 +63,6 @@ function basicHeaders(init, pathname){
     h.set("Content-Type", ct);
     h.set("Cache-Control", "no-store, must-revalidate");
   } else if (isTS(pathname) || isM4S(pathname) || isMP4(pathname)){
-    // إن لم يأتِ من الأصل
     if (!h.has("Content-Type")) h.set("Content-Type", ct);
     if (!h.has("Cache-Control")) h.set("Cache-Control", "public, max-age=15, immutable");
   } else if (isKEY(pathname)){
@@ -78,22 +70,26 @@ function basicHeaders(init, pathname){
     h.set("Cache-Control", "no-store");
   }
 
-  // CORS
-  h.set("Access-Control-Allow-Origin", "*");
-  h.set("Access-Control-Expose-Headers", CORS_EXPOSE);
+  addCors(h);
   return h;
 }
 
-/* ===== Upstream Fetch ===== */
-async function fetchUpstream(req, env){
+function joinPath(a, b){
+  const A = (a||"").replace(/\/+$/,"");
+  const B = (b||"").replace(/^\/+/,"");
+  return `${A}/${B}`;
+}
+
+async function fetchUpstream(req, env, method="GET"){
   const originBase = new URL(env.ORIGIN_BASE || "http://46.152.17.35");
   const inUrl = new URL(req.url);
 
-  // ازل /hls من المسار عند الطلب للأصل
-  const upstreamPath = inUrl.pathname.replace(/^\/hls/i, "") || "/";
-  const upstream = new URL(upstreamPath + inUrl.search, originBase);
+  // احذف /hls من بداية الطلب الوارد ثم أضف بادئة الأصل إن وُجدت
+  const incoming = inUrl.pathname.replace(/^\/hls/i, "");     // مثال: /live/playlist.m3u8
+  const prefix   = (env.ORIGIN_PATH_PREFIX || "");            // مثال: /hls أو فارغ
+  const upstreamPath = joinPath(prefix, incoming);            // مثال: /hls/live/playlist.m3u8
 
-  const isSegment = isTS(inUrl.pathname) || isM4S(inUrl.pathname) || isMP4(inUrl.pathname);
+  const upstream = new URL(upstreamPath + inUrl.search, originBase);
 
   const hdrs = new Headers();
   hdrs.set("Accept", "*/*");
@@ -105,74 +101,70 @@ async function fetchUpstream(req, env){
   const to = Number(env.PROXY_TIMEOUT_MS || 15000);
   const id = setTimeout(()=>controller.abort("proxy timeout"), to);
 
-  const cfOpts = {};
-  if (env.UPSTREAM_RESOLVE_IP) {
-    // اتصل بالـ IP مع الإبقاء على Host من ORIGIN_BASE
-    cfOpts.resolveOverride = String(env.UPSTREAM_RESOLVE_IP);
-  }
-  if (isSegment) {
-    const ttl = Number(env.CACHE_SEGMENT_SECONDS || 0);
-    if (ttl > 0) {
-      cfOpts.cacheEverything = true;
-      cfOpts.cacheTtl = ttl;
-    }
-  } else {
-    cfOpts.cacheEverything = false;
-    cfOpts.cacheTtl = 0;
-  }
-
   let res;
   try{
     res = await fetch(upstream, {
-      method: "GET",
+      method,
       headers: hdrs,
       redirect: "follow",
       signal: controller.signal,
-      cf: cfOpts,
+      cf: { cacheEverything: false, cacheTtl: 0 },
     });
   } finally { clearTimeout(id); }
 
   return { res, finalUrl: res.url };
 }
 
-/* ===== Worker Entrypoint ===== */
 export default {
   async fetch(req, env){
     const url = new URL(req.url);
 
-    // Health
-    if (url.pathname === "/health"){
-      return new Response("ok", { status: 200, headers: { "content-type":"text/plain" } });
+    // OPTIONS (CORS preflight)
+    if (req.method === "OPTIONS"){
+      const h = addCors(new Headers());
+      return new Response(null, { status: 204, headers: h });
     }
 
-    // CORS preflight
-    if (req.method === "OPTIONS"){
-      return corsPreflight();
+    // Health
+    if (url.pathname === "/health"){
+      return new Response("ok", { status: 200, headers: addCors(new Headers({ "content-type":"text/plain" })) });
     }
 
     if (!url.pathname.startsWith("/hls/")){
-      return new Response("Not Found", { status: 404 });
+      return new Response("Not Found", { status: 404, headers: addCors(new Headers({ "content-type":"text/plain" })) });
     }
 
-    let upstream;
-    try{
-      upstream = await fetchUpstream(req, env);
-    }catch(e){
-      return new Response("Upstream fetch failed: "+String(e), {
+    // نسمح بـ GET و HEAD
+    const wantHead = (req.method === "HEAD");
+    const upstream = await fetchUpstream(req, env, wantHead ? "HEAD" : "GET").catch(e=>{
+      return { error: e };
+    });
+    if (upstream?.error){
+      return new Response("Upstream fetch failed: "+String(upstream.error), {
         status: 502,
-        headers: { "content-type":"text/plain", "Access-Control-Allow-Origin":"*" }
+        headers: addCors(new Headers({ "content-type":"text/plain" }))
       });
     }
 
     const { res, finalUrl } = upstream;
 
     if (res.status >= 400){
-      // مرر 4xx/5xx كما هي ليتضح السبب
       const h = basicHeaders({ headers: { "content-type":"text/plain" } }, url.pathname);
       return new Response(`Upstream error ${res.status}`, { status: res.status, headers: h });
     }
 
-    // M3U8: أعد كتابة الروابط لتعود عبر /hls
+    // HEAD: أعِد الرؤوس فقط
+    if (wantHead){
+      const h = basicHeaders({ headers: {} }, url.pathname);
+      // مرّر Content-Type/Length إذا وُجدت
+      for (const k of ["content-type","content-length","accept-ranges","content-range"]){
+        const v = res.headers.get(k);
+        if (v) h.set(k.replace(/\b\w/g,m=>m.toUpperCase()), v);
+      }
+      return new Response(null, { status: 200, headers: h });
+    }
+
+    // GET
     if (isM3U8(url.pathname)){
       const raw = await res.text();
       const out = rewriteManifest(raw, finalUrl);
@@ -182,7 +174,6 @@ export default {
       });
     }
 
-    // تمرير البيانات الثنائية مع بعض رؤوس الأصل
     const h = basicHeaders({ headers: {} }, url.pathname);
     const ct = res.headers.get("content-type");
     const ar = res.headers.get("accept-ranges");
