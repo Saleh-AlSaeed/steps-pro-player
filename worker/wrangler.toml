@@ -1,12 +1,9 @@
 name = "races-player"
 main = "src/index.js"
 compatibility_date = "2025-09-01"
-[vars]
-# دومين التَنِل الذي أثبتناه
-ORIGIN_BASE = "https://classified-documentation-absent-arbitrary.trycloudflare.com"
-# لأن الأصل يخدم تحت /hls
-ORIGIN_PATH_PREFIX = "/hls"
-# اختياري لتحسين السلاسة عبر كاش شرائح قصير
-CACHE_SEGMENT_SECONDS = "25"
-PROXY_TIMEOUT_MS = "15000"
 
+[vars]
+ORIGIN_BASE = "https://classified-documentation-absent-arbitrary.trycloudflare.com"
+ORIGIN_PATH_PREFIX = "/hls"
+PROXY_TIMEOUT_MS = "15000"
+CACHE_SEGMENT_SECONDS = "25"
