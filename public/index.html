@@ -81,7 +81,7 @@
     #startBtn{min-width:160px}
 
     /* اختيار الكاميرات */
-    #camControls{bottom:14px;left:50%;transform:translateX(-50%);background:var(--panel-bg);padding:10px;border-radius:14px;border:1px solid var(--panel-bd)}
+    #camControls{bottom:14px;left:50%;transform:translateX(-50%);background:var(--panel-bg);padding:10px;border-radius:14px;border:1px solid var(--panel-bд)}
 
     /* هواتف عمودية */
     @media (orientation: portrait){
@@ -371,7 +371,7 @@
     const gPlay=document.getElementById('gPlay');
     const gBack=document.getElementById('gBack');
     const gFwd=document.getElementById('gFwd');
-    const scrub=document.getElementById('scrub');
+    const scrub=document.getElementById('scrub');   /* ← تعــريف واحــد فقــط */
     const timeLabel=document.getElementById('timeLabel');
 
     let started=false, splitMode=0, fillMode=false;
@@ -492,7 +492,7 @@
       else { mainPlayer.pause(); }
     });
 
-    const scrub=document.getElementById('scrub');
+    /* لم نعد نُعيد تعريف scrub هنا — فقط نستخدمه */
     scrub.addEventListener('input', ()=>{ if(started) isScrubbing=true; });
     scrub.addEventListener('change', ()=>{
       if(!started) return;
