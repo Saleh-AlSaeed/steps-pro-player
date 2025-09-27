@@ -1,9 +1,7 @@
 [build]
   publish = "public"
-
-# مرّر كل ما تحت /hls/* إلى الوركر الجديد
-[[redirects]]
   from = "/hls/*"
   to   = "https://fancy-resonance-1b8f.salreggea1.workers.dev/hls/:splat"
   status = 200
   force  = true
+
