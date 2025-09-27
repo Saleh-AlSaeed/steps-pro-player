@@ -1,12 +1,9 @@
-name = "races-player"
+name = "hls-proxy"
 main = "src/index.js"
-compatibility_date = "2025-09-01"
+compatibility_date = "2025-09-27"
+workers_dev = true
 
 [vars]
-ORIGIN_BASE = "https://gif-sides-trades-msgid.trycloudflare.com"
-ORIGIN_PATH_PREFIX = "/hls"
+# استخدم http لتفادي TLS مع IP؛ غيّرها https لو عندك دومين بشهادة صحيحة
+ORIGIN_BASE = "https://answer-moreover-joe-fragrance.trycloudflare.com"
 PROXY_TIMEOUT_MS = "15000"
-CACHE_SEGMENT_SECONDS = "25"
-
-
-
